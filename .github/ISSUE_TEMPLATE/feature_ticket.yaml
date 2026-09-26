@@ -1,0 +1,63 @@
+name: Feature Request
+description: 機能実装チケット（チケット駆動開発用）
+title: "[FEAT] "
+labels: ["enhancement"]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        チケット駆動開発用テンプレートです。機能要件は別途定義済みのものとし、実装作業の管理・追跡に使用します。
+
+  - type: textarea
+    id: task
+    attributes:
+      label: 作業内容
+      description: このチケットで実施する具体的なタスクを記載してください
+      placeholder: |
+        - [ ] 〇〇の実装
+        - [ ] 単体テストの作成
+    validations:
+      required: true
+
+  - type: input
+    id: requirements
+    attributes:
+      label: 関連要件リンク
+      description: 対応する要件定義書・仕様書・Issue の URL を記載してください
+      placeholder: "https://..."
+    validations:
+      required: false
+
+  - type: input
+    id: parent_branch
+    attributes:
+      label: 親ブランチ
+      description: "このブランチを切る元となるブランチ（通常は dev）"
+      value: "dev"
+    validations:
+      required: true
+
+  - type: input
+    id: branch
+    attributes:
+      label: 作業ブランチ
+      description: "親ブランチから切るブランチ名（feat/*** 形式）"
+      placeholder: "feat/your-feature-name"
+    validations:
+      required: true
+
+  - type: textarea
+    id: raci
+    attributes:
+      label: RACI
+      description: 各役割の担当者を記入してください。R はチケット作成者（自分）を記入します。
+      value: |
+        | 役割 | 説明 | 担当者 |
+        |------|------|--------|
+        | R: 実行責任者 | 実際に作業を行う人 | @me |
+        | A: 説明責任者 | 成果物に最終責任を持つ人 | |
+        | C: 協業先 | 作業に際して相談・協力を求める人 | |
+        | I: 報告先 | 進捗・完了を報告する人 | |
+    validations:
+      required: true

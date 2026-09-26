@@ -1,0 +1,89 @@
+name: Bug Report
+description: バグの報告用テンプレート
+title: "[BUG] "
+labels: ["bug"]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        バグ報告ありがとうございます。できる限り詳しく記載していただけると助かります。
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: バグの概要
+      description: バグの簡潔な説明
+      placeholder: バグの内容を記載してください
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 再現手順
+      description: バグを再現するための手順
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期待される動作
+      description: 期待していた動作の説明
+      placeholder: 本来どのように動作すべきか記載してください
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 実際の動作
+      description: 実際に起こった動作の説明
+      placeholder: 実際に何が起きたか記載してください
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: "例: macOS 13.0"
+    validations:
+      required: false
+
+  - type: input
+    id: browser
+    attributes:
+      label: ブラウザ
+      placeholder: "例: Chrome 108.0"
+    validations:
+      required: false
+
+  - type: input
+    id: node_version
+    attributes:
+      label: Node.js バージョン
+      placeholder: "例: 18.12.0"
+    validations:
+      required: false
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: スクリーンショット
+      description: 可能であればスクリーンショットを添付してください
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: 追加情報
+      description: その他の関連情報があれば記載してください
+    validations:
+      required: false
