@@ -1,0 +1,17 @@
+{
+  "name": "chibatech-student-resource-center-mcp",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Unofficial MCP server for the Chiba Institute of Technology student resource center portal (npm workspaces root).",
+  "type": "module",
+  "packageManager": "npm@11.19.0",
+  "workspaces": [
+    "packages/*",
+    "tools/*"
+  ],
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "check": "npm run typecheck && npm run test"
+  }
+}

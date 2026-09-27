@@ -1,3 +1,6 @@
+// 型だけの参照（実行時の挙動は変わらない）。他のワークスペースからソースを直接型検査するときにも
+// worker モジュールの宣言が届くようにする。
+/// <reference path="./pdfjs-worker.d.ts" />
 import type { PDFDocumentProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { getPdfAssets, type PdfAssets } from "./assets.ts";
 import { layoutText, type LayoutItem } from "./layout.ts";

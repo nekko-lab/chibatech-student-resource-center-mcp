@@ -1,0 +1,18 @@
+# docker/test.Dockerfile 専用の除外（ビルドコンテキストはリポジトリのルート）
+.git
+.github
+.claude
+.devcontainer
+container
+poc
+**/node_modules
+**/dist
+**/coverage
+**/out
+**/.cache
+**/.research
+**/*.pdf
+**/*.log
+**/*.tsbuildinfo
+**/pdfx_*
+**/.DS_Store
