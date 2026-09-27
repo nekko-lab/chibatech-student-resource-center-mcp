@@ -36,11 +36,11 @@ describe("listSections", () => {
     const r = await listSections(s.page);
     expect(r.heading).toBe("2026年度入学　架空学部 架空工学科");
     expect(r.sections.map((x) => x.title)).toEqual([
-      "学生生活について",
-      "修学について",
-      "進級要件・卒業要件・教育課程表",
-      "就職について",
-      "諸規程",
+      "架空の生活案内",
+      "架空の修学案内",
+      "架空の要件と課程表",
+      "架空の進路案内",
+      "架空の規程集",
     ]);
     const life = r.sections[0]!;
     expect(life.items[0]).toEqual({
@@ -92,7 +92,7 @@ describe("listSections", () => {
     await submitSearch(s.page);
     const r = await listSections(s.page);
     expect(r.heading).toBe("2026年度入学　大学院 架空工学研究科");
-    expect(r.sections.map((x) => x.title)).toEqual(["概要", "修学について", "諸手続", "架空工学研究科"]);
+    expect(r.sections.map((x) => x.title)).toEqual(["架空の概要", "架空の修学案内", "架空の手続案内", "架空工学研究科"]);
     expect(r.sections[0]!.items.filter((i) => i.page === 5)).toHaveLength(2);
   });
 

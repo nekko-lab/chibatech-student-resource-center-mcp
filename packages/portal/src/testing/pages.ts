@@ -226,7 +226,7 @@ function manualTable(rows: [string, string, string][]): string {
     .join("\n");
   return `			<table>
 				<colgroup><col class="w-70"><col class="w-30"></colgroup>
-				<thead><tr><th>様式名称</th><th>取扱窓口</th></tr></thead>
+				<thead><tr><th>名称（架空）</th><th>担当（架空）</th></tr></thead>
 				<tbody>
 ${body}
 				</tbody>
@@ -329,7 +329,7 @@ function handbookPage(basePath: string): string {
       ]
         .map(([cls, href, label]) => `				<li class="${cls}"><a href="${href}" target="_blank">${label}</a></li>`)
         .join("\n");
-      return `			<h2>${y}年度入学生用</h2>\n			<ul class="handbook_list">\n${items}\n			</ul>`;
+      return `			<h2>${y}年度入学（架空）</h2>\n			<ul class="handbook_list">\n${items}\n			</ul>`;
     })
     .join("\n\n");
   return wholePage(
@@ -377,7 +377,7 @@ function contactBox(c: FakeContact): string {
   if (c.place) parts.push(`<div class="inquiry_place">${c.place}</div>`);
   if (c.tel) parts.push(`<div class="inquiry_tel"><span class="tel_link">${esc(c.tel)}</span></div>`);
   if (c.time) parts.push(`<div class="inquiry_time">${c.time.map(esc).join("<br>")}</div>`);
-  if (c.service) parts.push(`<div class="inquiry_service">主な取扱事項<br>${esc(c.service)}</div>`);
+  if (c.service) parts.push(`<div class="inquiry_service">担当業務（架空）<br>${esc(c.service)}</div>`);
   if (c.bare) parts.push(esc(c.bare));
   return `				<div class="col-md-6">
 					<div class="inquiry-box">
@@ -423,7 +423,7 @@ function inquiryPage(basePath: string): string {
       ],
     ]),
   ];
-  const time = ["取扱時間（月～金）9：00～17：00", "（土曜日）9：00～12：00"];
+  const time = ["受付（平日）9:00～17:00", "（土）9:00～12:00"];
   const general: FakeContact[] = [
     { title: ["北キャンパス"], place: "架空1号館1階", time },
     { title: ["南キャンパス"], place: "架空2号館1階", time },
@@ -431,7 +431,7 @@ function inquiryPage(basePath: string): string {
   const depts: FakeContact[] = [
     { title: ["架空センター　教務係", "北キャンパス"], place: "架空1号館1階", tel: "000-0000-0001", time, service: "架空の履修・成績" },
     { title: ["架空センター　教務係", "南キャンパス"], place: "架空2号館1階", tel: "000-0000-0002", time, service: "架空の履修・成績" },
-    { title: ["架空保健室"], place: "北キャンパス：架空1号館1階<br>南キャンパス：架空2号館1階", time: ["取扱時間（月～金）9：00～19：00", "（昼休み）12：40～13：40"], service: "架空の健康相談" },
+    { title: ["架空保健室"], place: "北キャンパス：架空1号館1階<br>南キャンパス：架空2号館1階", time: ["受付（平日）9:00～19:00", "（休憩）12:30～13:30"], service: "架空の健康相談" },
     { title: ["架空サービス株式会社"], bare: "架空の推奨機器の問い合わせ先" },
   ];
   const box = (list: FakeContact[]): string => `			<div class="row">\n${list.map(contactBox).join("\n")}\n			</div>`;
@@ -444,7 +444,7 @@ function inquiryPage(basePath: string): string {
 			</ul>
 ${faq.join("\n\n")}
 
-			<h2 id="anc-inquiry">お問合せ先</h2>
+			<h2 id="anc-inquiry">窓口一覧（架空）</h2>
 			<h3>総合窓口（架空）</h3>
 ${box(general)}
 			<h3>部署別連絡先（架空）</h3>

@@ -61,7 +61,7 @@ export function undergradSections(year: number, deptSlug: string): FakeSection[]
   const c = `common_${year}`;
   return [
     {
-      title: "学生生活について",
+      title: "架空の生活案内",
       links: [
         { href: `${c}/life.pdf#page=1`, text: "架空の年間行事" },
         { href: `${c}/life.pdf#page=3`, text: "架空の学生証" },
@@ -71,14 +71,14 @@ export function undergradSections(year: number, deptSlug: string): FakeSection[]
       ],
     },
     {
-      title: "修学について",
+      title: "架空の修学案内",
       links: [
         { href: `${c}/study.pdf#page=1`, text: "架空の学籍" },
         { href: `${c}/study.pdf#page=2`, text: "架空の履修要項" },
       ],
     },
     {
-      title: "進級要件・卒業要件・教育課程表",
+      title: "架空の要件と課程表",
       links: [
         { href: `${deptSlug}/${deptSlug}_${year}.pdf#page=1`, text: "架空学部の方針" },
         { href: `${deptSlug}/${deptSlug}_${year}.pdf#page=7`, text: "架空の進級・卒業要件と教育課程表" },
@@ -86,14 +86,14 @@ export function undergradSections(year: number, deptSlug: string): FakeSection[]
       ],
     },
     {
-      title: "就職について",
+      title: "架空の進路案内",
       links: [
         { href: `../whole/shinro/job_${year}.pdf#page=1`, text: "架空の就職委員会" },
         { href: `../whole/shinro/job_${year}.pdf#page=2`, text: "架空のアルバイト案内" },
       ],
     },
     {
-      title: "諸規程",
+      title: "架空の規程集",
       links: [
         { href: `${c}/regulation.pdf#page=1`, text: "架空の学則" },
         { href: `${c}/regulation.pdf#page=12`, text: "架空の履修規程" },
@@ -107,7 +107,7 @@ export function graduateSections(year: number, school: string, schoolName: strin
   const c = `common_${year}`;
   return [
     {
-      title: "概要",
+      title: "架空の概要",
       links: [
         { href: `${c}/summary.pdf#page=1`, text: "架空の沿革" },
         { href: `${c}/summary.pdf#page=5`, text: "架空の課程" },
@@ -115,14 +115,14 @@ export function graduateSections(year: number, school: string, schoolName: strin
       ],
     },
     {
-      title: "修学について",
+      title: "架空の修学案内",
       links: [
         { href: `${c}/study.pdf#page=1`, text: "架空の学生番号" },
         { href: `${c}/study.pdf#page=10`, text: "架空の修了要件" },
       ],
     },
     {
-      title: "諸手続",
+      title: "架空の手続案内",
       links: [{ href: `${c}/procedure.pdf#page=6`, text: "架空の証明書類" }],
     },
     {

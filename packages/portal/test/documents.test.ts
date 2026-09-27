@@ -89,7 +89,7 @@ describe("listDocuments", () => {
   it("handbook: 年度 × 学部（改行を含む名称は連結する）", async () => {
     s = await openFake(browser);
     const r = await listDocuments(s.page, "handbook");
-    expect(r.map((c) => c.category)).toEqual(["2026年度入学生用", "2025年度入学生用", "2024年度入学生用"]);
+    expect(r.map((c) => c.category)).toEqual(["2026年度入学（架空）", "2025年度入学（架空）", "2024年度入学（架空）"]);
     expect(r[0]!.items).toEqual([
       { title: "架空工学部", url: `${B}whole/handbook/handbook_2026_fic.pdf`, ext: "pdf", requiresLogin: false },
       { title: "模擬情報学部", url: `${B}whole/handbook/handbook_2026_sim.pdf`, ext: "pdf", requiresLogin: false },
