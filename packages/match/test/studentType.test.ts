@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { resolveStudentType } from "../src/index";
 
 describe("resolveStudentType", () => {
-  it.each(["学部", "学部生", "学士", "B2", "b4", "Ｂ１", "学部3年", "undergrad", "1"])(
+  it.each(["学部", "学部生", "学士", "B2", "b4", "Ｂ１", "学部3年", "undergrad", "Undergraduate", "1"])(
     "%s → undergrad",
     (input) => {
       expect(resolveStudentType(input)).toBe("undergrad");

@@ -127,9 +127,12 @@ describe("resolveDepartment", () => {
     expect(resolveDepartment("建築学科の卒業要件", undergrad).best?.code).toBe("Y1");
   });
 
-  it("name に「コード：名称」の生文字列を入れた選択肢も受ける", () => {
+  it("name に「コード：名称」の生文字列を入れた選択肢も受ける（返すのは渡した要素そのもの）", () => {
     const raw: DeptOption[] = RAW_UNDERGRAD.map((s) => ({ code: "", name: s }));
-    expect(resolveDepartment("g1", raw).best?.code).toBe("G1");
+    const g1 = resolveDepartment("g1", raw).best;
+    expect(g1).toBe(raw[11]);
+    expect(g1?.name).toBe("G1：情報工学科（2024年度入学～）");
+    expect(resolveDepartment("2024年入学の情工", raw).best).toBe(raw[11]);
     expect(resolveDepartment("建築", raw).best?.name).toBe("Y1：建築学科");
   });
 
