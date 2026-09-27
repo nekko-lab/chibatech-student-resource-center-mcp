@@ -131,3 +131,10 @@ $RECYCLE.BIN/
 *.lnk
 
 # End of https://www.toptal.com/developers/gitignore/api/linux,macos,windows
+
+
+# ============================== PoC (Bun 単一バイナリ) ============================== #
+
+
+poc/node_modules/
+poc/out/
