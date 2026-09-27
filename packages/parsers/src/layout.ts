@@ -134,6 +134,13 @@ export function median(values: readonly number[]): number | undefined {
   return s.length % 2 ? s[m] : (s[m - 1]! + s[m]!) / 2;
 }
 
+/** 隣り合う値の差（昇順に並べた y から行間を出すのに使う） */
+export function diffs(values: readonly number[]): number[] {
+  const out: number[] = [];
+  for (let i = 1; i < values.length; i++) out.push(values[i]! - values[i - 1]!);
+  return out;
+}
+
 /** 1 行の Box を読み順につなぐ。文字高さより広い隙間には空白を 1 つ入れる */
 export function lineText(boxes: readonly Box[], gapRatio = 1.5): string {
   let s = "";

@@ -218,11 +218,9 @@ function parsePage(page: PageItems): PageResult {
 
     const headIdx = cols.findIndex((c) => c.col.kind === "head");
     const headCells = headIdx >= 0 ? cellsOf(headIdx) : [];
-    const yearCols = cols
-      .map((c, i) => ({ c, i }))
-      .filter((x): x is { c: (typeof cols)[number] & { col: { kind: "year"; year: SchoolYear } }; i: number } => x.c.col.kind === "year")
-      .sort((a, b) => a.c.col.year - b.c.col.year);
-    const yearCells = yearCols.map((y) => ({ year: y.c.col.year, cells: cellsOf(y.i) }));
+    const yearCells = cols
+      .flatMap((c, i) => (c.col.kind === "year" ? [{ year: c.col.year, cells: cellsOf(i) }] : []))
+      .sort((a, b) => a.year - b.year);
 
     depts.forEach((d, di) => {
       const heads = namesInCell(headCells[di] ?? []);

@@ -14,6 +14,7 @@ import {
   type Span,
   columnBoundaries,
   columnOf,
+  diffs,
   groupLines,
   groupWords,
   lineText,
@@ -353,12 +354,6 @@ function parsePage(page: PageItems): PageResult {
     });
   }
   return { title, period, directions, notes: [...footnotes, ...notes] };
-}
-
-function diffs(ys: readonly number[]): number[] {
-  const out: number[] = [];
-  for (let i = 1; i < ys.length; i++) out.push(ys[i]! - ys[i - 1]!);
-  return out;
 }
 
 /** バスダイヤ PDF の座標付きテキストから時刻表を復元する。読めなかった箇所は notes に残す */
