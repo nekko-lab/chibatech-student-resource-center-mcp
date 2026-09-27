@@ -1,14 +1,22 @@
 import type { TextItem } from "./extract.ts";
 
+/** 行の組み立てに使う item。縦書き（pdfjs の dir === "ttb"）なら vertical を立てる。 */
+export interface LayoutItem extends TextItem {
+  vertical?: boolean;
+}
+
 interface Line {
-  y: number;
-  h: number;
-  items: TextItem[];
+  vertical: boolean;
+  /** 横書きはベースラインの y、縦書きは列の x。 */
+  pos: number;
+  /** 横書きは文字の高さ、縦書きは列の幅（どちらもほぼフォントサイズ）。 */
+  size: number;
+  items: LayoutItem[];
 }
 
 /** 字間がフォントサイズのこの割合を超えたら空白を入れる。 */
 const SPACE_GAP_RATIO = 0.2;
-/** ベースラインの差がフォントサイズのこの割合以内なら同じ行とみなす。 */
+/** ベースライン（縦書きは列の位置）の差がフォントサイズのこの割合以内なら同じ行とみなす。 */
 const SAME_LINE_RATIO = 0.5;
 
 /**
@@ -16,17 +24,21 @@ const SAME_LINE_RATIO = 0.5;
  *
  * - 読む順（content stream の順）を保ち、y 座標が変わったところで改行する
  * - 同じ行の item は x 順に並べ、間隔が広いところに空白を入れる
+ * - 縦書きの item は列（x）ごとにまとめ、上から下へ並べる
  * - 空白だけの item は捨てる（必要な空白は間隔から復元する）
  */
-export function layoutText(items: readonly TextItem[]): string {
+export function layoutText(items: readonly LayoutItem[]): string {
   const lines: Line[] = [];
   for (const it of items) {
     if (it.str.trim() === "") continue;
+    const vertical = it.vertical === true;
+    const pos = vertical ? it.x : it.y;
+    const size = vertical ? it.width : it.height;
     const cur = lines[lines.length - 1];
-    if (cur !== undefined && sameLine(cur, it)) {
+    if (cur !== undefined && cur.vertical === vertical && near(cur, pos, size)) {
       cur.items.push(it);
     } else {
-      lines.push({ y: it.y, h: it.height, items: [it] });
+      lines.push({ vertical, pos, size, items: [it] });
     }
   }
   return lines
@@ -35,23 +47,27 @@ export function layoutText(items: readonly TextItem[]): string {
     .join("\n");
 }
 
-function sameLine(line: Line, it: TextItem): boolean {
-  const h = Math.min(line.h || it.height, it.height || line.h);
-  return Math.abs(it.y - line.y) <= Math.max(1, SAME_LINE_RATIO * h);
+function near(line: Line, pos: number, size: number): boolean {
+  const s = Math.min(line.size || size, size || line.size);
+  return Math.abs(pos - line.pos) <= Math.max(1, SAME_LINE_RATIO * s);
 }
 
 function joinLine(line: Line): string {
-  const sorted = [...line.items].sort((a, b) => a.x - b.x);
+  // 横書きは左から右（x）、縦書きは上から下（y）に進む
+  const start = (it: LayoutItem) => (line.vertical ? it.y : it.x);
+  const extent = (it: LayoutItem) => (line.vertical ? it.height : it.width);
+  const size = (it: LayoutItem) => Math.max(1, (line.vertical ? it.width : it.height) || line.size);
+
+  const sorted = [...line.items].sort((a, b) => start(a) - start(b));
   let out = "";
   let end = Number.NEGATIVE_INFINITY;
   for (const it of sorted) {
     if (out !== "") {
-      const size = Math.max(1, it.height || line.h);
-      const gap = it.x - end;
-      if (gap > SPACE_GAP_RATIO * size && !/\s$/.test(out) && !/^\s/.test(it.str)) out += " ";
+      const gap = start(it) - end;
+      if (gap > SPACE_GAP_RATIO * size(it) && !/\s$/.test(out) && !/^\s/.test(it.str)) out += " ";
     }
     out += it.str;
-    end = Math.max(end, it.x + it.width);
+    end = Math.max(end, start(it) + extent(it));
   }
   return out.trim();
 }

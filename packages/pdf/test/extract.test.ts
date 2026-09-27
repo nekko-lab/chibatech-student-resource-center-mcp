@@ -168,6 +168,8 @@ describe("extractItems", () => {
     expect(p1.height).toBe(800);
     expect(p1.items).toHaveLength(1);
     const it0 = p1.items[0]!;
+    // 公開する形は TextItem の 5 項目だけ
+    expect(Object.keys(it0).sort()).toEqual(["height", "str", "width", "x", "y"]);
     expect(it0.str).toBe("ABC");
     expect(it0.x).toBeCloseTo(100, 3);
     expect(it0.y).toBeCloseTo(100, 3);
@@ -204,6 +206,11 @@ describe("定義済み CMap（非埋め込み CJK フォント）", () => {
 
   it("既定の資産（pdfjs-dist 同梱の CMap）で本文を復元できる", async () => {
     expect(await textOf(pdf)).toBe(LINES.join("\n"));
+  });
+
+  it("縦書き（UniJIS-UCS2-V）は列ごとに上から下へ読み、列の切れ目で改行する", async () => {
+    const vertical = await predefinedCMapPdf(["縦書きの見出し", "二列目"], { vertical: true });
+    expect(await textOf(vertical)).toBe("縦書きの見出し\n二列目");
   });
 
   it("CMap が無いと本文を復元できない（CMap を渡す意味の確認）", async () => {

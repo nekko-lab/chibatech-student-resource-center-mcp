@@ -47,6 +47,17 @@ describe("layoutText", () => {
     expect(layoutText([item(" ", 0, 0), item("  a ", 10, 0), item(" ", 0, 50)])).toBe("a");
   });
 
+  it("縦書きの item は列ごとにまとめ、上から下へつなぐ", () => {
+    const v = (str: string, x: number, y: number) => ({ ...item(str, x, y, 12, str.length * 12), vertical: true });
+    // 同じ列を下の部分から描いても上から読む。列が変われば改行
+    expect(layoutText([v("見出し", 500, 36), v("縦書きの", 500, 0), v("二列目", 480, 0)])).toBe("縦書きの見出し\n二列目");
+  });
+
+  it("縦書きと横書きは同じ行にまとめない", () => {
+    const v = { ...item("縦", 100, 100, 12, 12), vertical: true };
+    expect(layoutText([item("横", 100, 100), v])).toBe("横\n縦");
+  });
+
   it("高さ 0 の item でも行をまとめられる", () => {
     expect(layoutText([item("a", 0, 0, 6, 0), item("b", 6, 0.5, 6, 0), item("c", 0, 10, 6, 0)])).toBe("ab\nc");
   });

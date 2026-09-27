@@ -1,6 +1,6 @@
 import type { PDFDocumentProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { getPdfAssets, type PdfAssets } from "./assets.ts";
-import { layoutText } from "./layout.ts";
+import { layoutText, type LayoutItem } from "./layout.ts";
 
 export interface PageText {
   /** 1 始まり。 */
@@ -81,16 +81,25 @@ async function withDocument<T>(bytes: Uint8Array, fn: (doc: PDFDocumentProxy) =>
   }
 }
 
-async function readPage(doc: PDFDocumentProxy, pageNumber: number): Promise<PageItems> {
+interface RawPage {
+  page: number;
+  width: number;
+  height: number;
+  items: LayoutItem[];
+}
+
+async function readPage(doc: PDFDocumentProxy, pageNumber: number): Promise<RawPage> {
   const page = await doc.getPage(pageNumber);
   try {
     const viewport = page.getViewport({ scale: 1 });
     const content = await page.getTextContent();
-    const items: TextItem[] = [];
+    const items: LayoutItem[] = [];
     for (const it of content.items) {
       if (!("str" in it) || it.str === "") continue;
       const [x, y] = viewport.convertToViewportPoint(it.transform[4], it.transform[5]) as [number, number];
-      items.push({ str: it.str, x, y, width: it.width, height: it.height });
+      const item: LayoutItem = { str: it.str, x, y, width: it.width, height: it.height };
+      if (it.dir === "ttb") item.vertical = true;
+      items.push(item);
     }
     return { page: pageNumber, width: viewport.width, height: viewport.height, items };
   } finally {
@@ -125,6 +134,10 @@ export function extractItems(bytes: Uint8Array, page: number): Promise<PageItems
     if (!Number.isInteger(page) || page < 1 || page > doc.numPages) {
       throw new RangeError(`page ${page} is out of range (1..${doc.numPages})`);
     }
-    return readPage(doc, page);
+    const raw = await readPage(doc, page);
+    return {
+      ...raw,
+      items: raw.items.map(({ str, x, y, width, height }) => ({ str, x, y, width, height })),
+    };
   });
 }

@@ -89,7 +89,8 @@ export async function measure(font: "latin" | "japanese"): Promise<(text: string
  * 古い Acrobat / Word 出力の日本語 PDF に多い形で、pdfjs は CMap データが無いと本文を復元できない。
  * text は UCS-2 で表せる文字だけを使うこと。
  */
-export async function predefinedCMapPdf(lines: string[]): Promise<Uint8Array> {
+export async function predefinedCMapPdf(lines: string[], opts: { vertical?: boolean } = {}): Promise<Uint8Array> {
+  const cmap = opts.vertical ? "UniJIS-UCS2-V" : "UniJIS-UCS2-H";
   const doc = await PDFDocument.create();
   const ctx = doc.context;
   const descriptor = ctx.register(
@@ -119,8 +120,8 @@ export async function predefinedCMapPdf(lines: string[]): Promise<Uint8Array> {
     ctx.obj({
       Type: "Font",
       Subtype: "Type0",
-      BaseFont: "KozMinPr6N-Regular-UniJIS-UCS2-H",
-      Encoding: "UniJIS-UCS2-H",
+      BaseFont: `KozMinPr6N-Regular-${cmap}`,
+      Encoding: cmap,
       DescendantFonts: [cidFont],
     }),
   );
@@ -131,7 +132,8 @@ export async function predefinedCMapPdf(lines: string[]): Promise<Uint8Array> {
     page.pushOperators(
       beginText(),
       setFontAndSize("F1", 12),
-      moveText(72, 770 - i * 20),
+      // 縦書きは右の列から左へ、横書きは上の行から下へ
+      opts.vertical ? moveText(500 - i * 20, 770) : moveText(72, 770 - i * 20),
       showText(PDFHexString.of(ucs2Hex(line))),
       endText(),
     );
