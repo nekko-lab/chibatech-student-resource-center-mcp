@@ -5,6 +5,7 @@
 #   deps      : ルートの package-lock.json どおりに npm ci（ワークスペースの依存。canvas は取り除く）
 #   toolchain : bun（1.4.2 固定）・zip・Bun のライセンス（版とチェックサムを固定）と、依存・ソース
 #   build     : tools/build/src/cli.ts で全ターゲットをクロスコンパイルし、/work/dist に出力する。
+#               mcpb の tools は、TOOLS を省けばサーバの toolDefinitions() から毎回作る（/work/dist/tools.json）。
 #               検証用の CMap プローブ（tools/build/src/probe/cmap-probe.ts）を /work/probe に出力する
 #   artifacts : /work の中身だけ（--output type=local で取り出す）
 #   runtime   : bun も node も無い素の Debian。linux のバイナリとプローブだけを置く
@@ -16,8 +17,8 @@
 #     /opt/csrc/dist/bin/chibatech-src-mcp-linux-arm64 /opt/csrc/tools.json
 #
 # 引数（--build-arg）:
-#   ENTRY     単一バイナリの入口（既定: poc/src/launcher.ts。本番の入口への切り替えは別タスク）
-#   TOOLS     mcpb の tools に載せる JSON（既定: tools/build/fixtures/poc-tools.json）
+#   ENTRY     単一バイナリの入口（既定: 本番の packages/server/src/main.ts）
+#   TOOLS     mcpb の tools に載せる JSON（既定: 空。空ならサーバの toolDefinitions() から作る）
 #   VERSION   semver（v を付けない。既定 0.0.0-dev）
 #   TARGETS   カンマ区切りの出力（空なら既定の 4 つ）
 #   BUILD_ARGS  cli.ts に足す引数（例: "--baseline"）
@@ -55,26 +56,23 @@ ADD --checksum=sha256:b9caf52728691b4057e371232c221a132883198be2f3d2ddf92c90404c
 WORKDIR /repo
 COPY --from=deps /repo/ ./
 COPY . .
-# 検証用の入口 poc/src/launcher.ts は `../node_modules/playwright-core/browsers.json` を相対パスで読む。
-# poc/ はワークスペース外で依存を持たないため、ワークスペースの node_modules（同じ固定版）を見せる。
-# 本番の入口に切り替えた後は不要（poc/ を入口にしない限り効かない）。
-RUN [ -e poc/node_modules ] || ln -s ../node_modules poc/node_modules
 
 # ---- ビルド ----
 FROM toolchain AS build
-ARG ENTRY=poc/src/launcher.ts
-ARG TOOLS=tools/build/fixtures/poc-tools.json
+ARG ENTRY=packages/server/src/main.ts
+ARG TOOLS=
 ARG VERSION=0.0.0-dev
 ARG TARGETS=
 ARG BUILD_ARGS=
 RUN set -eu; \
     t=""; [ -n "$TARGETS" ] && t="--targets $TARGETS"; \
+    tools=""; [ -n "$TOOLS" ] && tools="--tools $TOOLS"; \
     lic=/opt/licenses/bun/LICENSE.md; \
-    bun run tools/build/src/cli.ts --entry "$ENTRY" --out /work/dist --version "$VERSION" --tools "$TOOLS" \
-      --bun-license "$lic" $t $BUILD_ARGS; \
+    bun run tools/build/src/cli.ts --entry "$ENTRY" --out /work/dist --version "$VERSION" \
+      --bun-license "$lic" $tools $t $BUILD_ARGS; \
     bun run tools/build/src/cli.ts --entry tools/build/src/probe/cmap-probe.ts --out /work/probe --version "$VERSION" \
-      --tools "$TOOLS" --bun-license "$lic" --name csrc-cmap-probe --no-mcpb $t $BUILD_ARGS; \
-    cp "$TOOLS" /work/tools.json; \
+      --bun-license "$lic" --name csrc-cmap-probe --no-mcpb $t $BUILD_ARGS; \
+    cp /work/dist/tools.json /work/tools.json; \
     mkdir -p /work/scripts && cp tools/build/scripts/*.sh /work/scripts/; \
     cd /work/dist && sha256sum -c SHA256SUMS; \
     cat /work/dist/build-report.json

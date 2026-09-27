@@ -1,5 +1,0 @@
-[
-  { "name": "portal_search", "description": "（非公式）区分・入学年度・学科で検索し、遷移先 URL と節の数を返す" },
-  { "name": "portal_list_sections", "description": "（非公式）現在の学科ページの節と PDF リンクを返す" },
-  { "name": "document_read_text", "description": "（非公式）PDF の指定ページの本文を抽出する" }
-]

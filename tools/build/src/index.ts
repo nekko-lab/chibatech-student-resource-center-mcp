@@ -36,4 +36,5 @@ export {
 } from "./manifest.ts";
 export { collectNotices, isLicenseFileName, packageOfPath, pdfjsAssetLicenseSections, renderNotices, type NoticeSection } from "./notices.ts";
 export { parseCliArgs, type CliOptions } from "./args.ts";
+export { renderToolsJson, serverToolDefinitions, writeServerToolsJson } from "./tools-json.ts";
 export { formatSha256Sums, mcpbFileName, type BuildReport } from "./report.ts";

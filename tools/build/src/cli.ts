@@ -1,8 +1,8 @@
 /**
  * 単一バイナリと mcpb（binary 型）のビルド。Bun で実行する。
  *
- *   bun run tools/build/src/cli.ts --entry <file> --out <dir> --version <x.y.z> --tools <tools.json> \
- *     --bun-license <LICENSE.md> [--targets a,b] [--baseline] [--name <名前>] [--no-mcpb] [--license <LICENSE>]
+ *   bun run tools/build/src/cli.ts --entry <file> --out <dir> --version <x.y.z> --bun-license <LICENSE.md> \
+ *     [--tools <tools.json>] [--targets a,b] [--baseline] [--name <名前>] [--no-mcpb] [--license <LICENSE>]
  *
  * 出力:
  *   <out>/bin/<名前>-<target>[.exe]    単体バイナリ（既定: darwin-arm64・windows-x64・linux-x64・linux-arm64）
@@ -10,10 +10,12 @@
  *   <out>/THIRD_PARTY_NOTICES.txt     同梱物のライセンス本文と著作権表示（mcpb のルートにも入れる）
  *   <out>/LICENSE                     リポジトリのライセンス（mcpb のルートにも入れる。無ければ警告して続ける）
  *   <out>/SHA256SUMS                  上のすべてのハッシュ（sha256sum -c で検査できる）
+ *   <out>/tools.json                  mcpb の tools に載せた一覧（--tools を省くとサーバの toolDefinitions() から作る）
  *   <out>/build-report.json           サイズ・埋め込んだ資産・書き換え・ライセンス表記の記録
  *
  * エントリの前に、pdfjs の CMap・標準フォントを埋め込んで setPdfAssets へ渡す起動前処理を差し込む。
- * エントリ自身は何も import しなくてよい（生成した入口が「起動前処理 → エントリ」の順に import する）。
+ * CMap を単一バイナリに渡す経路はこれだけ。エントリ自身は何も import しなくてよい
+ * （生成した入口が「起動前処理 → エントリ」の順に import する）。
  * そのためエントリは import.meta.main で起動を条件付けず、読み込まれたら起動すること。
  *
  * packages/server/src/version.ts の VERSION は --version の値に差し替える（plugins.ts。ソースは変えない）。
@@ -42,10 +44,13 @@ import { collectNotices, pdfjsAssetLicenseSections, renderNotices, type NoticeSe
 import { EXTERNALS, playwrightCorePlugin, serverVersionPlugin } from "./plugins.ts";
 import { formatSha256Sums, mcpbFileName, type BuildReport, type BuiltFile, type TargetReport } from "./report.ts";
 import { binaryFileName, resolveTargets, type Target } from "./targets.ts";
+import { writeServerToolsJson } from "./tools-json.ts";
 
 /** 出力のルートと mcpb のルートに置くファイル */
 const NOTICES = "THIRD_PARTY_NOTICES.txt";
 const LICENSE = "LICENSE";
+/** mcpb の tools に載せた一覧（出力のルート。mcp-probe.sh と照合に使う。SHA256SUMS と Release には入れない） */
+const TOOLS_JSON = "tools.json";
 
 function sha256(file: string): string {
   return createHash("sha256").update(readFileSync(file)).digest("hex");
@@ -178,10 +183,25 @@ async function main(): Promise<void> {
   }
   const entry = path.resolve(opts.entry);
   if (!existsSync(entry)) throw new Error(`エントリがありません: ${entry}`);
-  const tools = parseToolsJson(readFileSync(path.resolve(opts.tools), "utf8"));
   const out = path.resolve(opts.out);
   const binDir = path.join(out, "bin");
   mkdirSync(binDir, { recursive: true });
+
+  // 0. mcpb の tools（--tools を省けば、サーバの toolDefinitions() から毎回作る）
+  let tools: ToolEntry[] = [];
+  let toolsReport: BuildReport["tools"] = null;
+  if (opts.mcpb) {
+    const toolsFile = path.join(out, TOOLS_JSON);
+    if (opts.tools === undefined) {
+      tools = await writeServerToolsJson(toolsFile);
+    } else {
+      tools = parseToolsJson(readFileSync(path.resolve(opts.tools), "utf8"));
+      writeFileSync(toolsFile, `${JSON.stringify(tools, null, 2)}\n`);
+    }
+    const source = opts.tools === undefined ? "@chibatech-src/server toolDefinitions()" : opts.tools;
+    toolsReport = { path: TOOLS_JSON, source, count: tools.length, names: tools.map((t) => t.name) };
+    console.log(`tools: ${tools.length} (${source})`);
+  }
 
   const genDir = mkdtempSync(path.join(tmpdir(), "csrc-build-"));
   try {
@@ -249,6 +269,7 @@ async function main(): Promise<void> {
       versionPatched: [...new Set(ver.patched().map(rel))],
       pdfAssets: assets,
       targets: reports,
+      tools: toolsReport,
       mcpb,
       notices: { ...noticesBuilt, sections: notices.sections.map((x) => x.title) },
       license,
