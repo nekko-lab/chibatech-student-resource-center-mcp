@@ -42,24 +42,14 @@ GitHub の新しい **Rulesets** を使用して設定します．
 
 ---
 
-### 2. 開発環境のセットアップ（Dev Container）
+### 2. 開発環境のセットアップ（Docker）
 
-Dev Container を使用することで，チーム全員が同一の開発環境を再現できます．
+型検査とテストはすべて Docker の中で実行します．ホストに Node や Bun を入れる必要はありません．
+前提は [Docker](https://www.docker.com/products/docker-desktop/) だけです．手順は [開発手順](development.md) を参照してください．
 
-#### 前提条件
-
-- [Docker](https://www.docker.com/products/docker-desktop/) がインストール済みであること
-- [Visual Studio Code](https://code.visualstudio.com/) がインストール済みであること
-- VS Code 拡張機能 [Dev Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) がインストール済みであること
-
-#### 手順
-
-1. VS Code でリポジトリのルートディレクトリを開く
-2. コマンドパレットを開く（`Cmd+Shift+P` / `Ctrl+Shift+P`）
-3. `Dev Containers: Reopen in Container` を選択する
-4. コンテナのビルドが完了するまで待つ
-
-コンテナ起動後は，`.devcontainer/devcontainer.json` に定義された環境が自動的に適用されます．
+```bash
+scripts/test.sh
+```
 
 ---
 
