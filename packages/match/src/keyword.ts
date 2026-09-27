@@ -44,7 +44,10 @@ function variantsOf(term: string): string[] {
   return out;
 }
 
-/** 1 つの検索語から、本文に探す文字列（重み付き）を作る。同じ文字列は重いほうを残す。 */
+/**
+ * 1 つの検索語から、本文に探す文字列（重み付き）を作る。
+ * 同じ文字列が複数の経路で出たら重いほうを残す（利用者の語そのものが常に最重）。
+ */
 function needlesOf(term: string): Needle[] {
   const byText = new Map<string, Needle>();
   const add = (text: string, weight: number, label: string) => {
@@ -56,19 +59,17 @@ function needlesOf(term: string): Needle[] {
   for (const v of variants) add(v, WEIGHT.literal, `「${v}」を含む`);
 
   for (const group of GROUPS) {
-    const equal = group.some((m) => variants.includes(m));
-    const contained = !equal && group.filter((m) => m.length >= 2 && variants.some((v) => v.includes(m)));
-    if (equal) {
+    if (group.some((m) => variants.includes(m))) {
       for (const m of group) add(m, WEIGHT.synonym, `同義語「${m}」`);
-    } else if (contained && contained.length > 0) {
-      for (const m of group) {
-        if (contained.includes(m)) add(m, WEIGHT.containedMember, `語の一部「${m}」`);
-        else add(m, WEIGHT.containedSynonym, `語の一部の同義語「${m}」`);
-      }
+      continue;
+    }
+    const contained = group.filter((m) => m.length >= 2 && variants.some((v) => v.includes(m)));
+    if (contained.length === 0) continue;
+    for (const m of group) {
+      if (contained.includes(m)) add(m, WEIGHT.containedMember, `語の一部「${m}」`);
+      else add(m, WEIGHT.containedSynonym, `語の一部の同義語「${m}」`);
     }
   }
-  // 利用者の語そのものが最優先
-  for (const v of variants) add(v, WEIGHT.literal, `「${v}」を含む`);
   return [...byText.values()];
 }
 

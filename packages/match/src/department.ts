@@ -134,7 +134,8 @@ function nameScore(
   return best;
 }
 
-function adjust(q: string, qYear: number | undefined, p: PreparedOption): { delta: number; notes: string[] } {
+/** 括弧内の注記による加減点（課程注記の一致、入学年度の範囲内／外）。 */
+function adjust(q: string, qYear: number | undefined, p: PreparedOption): { delta: number; reasons: string[] } {
   let delta = 0;
   const why: string[] = [];
   for (const note of p.notes) {
@@ -154,7 +155,7 @@ function adjust(q: string, qYear: number | undefined, p: PreparedOption): { delt
       why.push(`${qYear}年度は範囲外`);
     }
   }
-  return { delta, notes: why };
+  return { delta, reasons: why };
 }
 
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
@@ -179,10 +180,10 @@ export function resolveDepartment(
     }
     const base = nameScore(q, p, queryIsInSomeName, containedAliases);
     if (base.score <= 0) continue;
-    const { delta, notes } = adjust(q, qYear, p);
+    const { delta, reasons } = adjust(q, qYear, p);
     const score = clamp01(base.score + delta);
     if (score < MIN_CANDIDATE_SCORE) continue;
-    candidates.push({ item: p.option, score, reason: [base.reason, ...notes].join("、") });
+    candidates.push({ item: p.option, score, reason: [base.reason, ...reasons].join("、") });
   }
 
   candidates.sort((a, b) => b.score - a.score);
