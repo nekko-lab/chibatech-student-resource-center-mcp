@@ -77,11 +77,11 @@ setPdfAssets(
 実行はすべて Docker の中で行います。ホストに node やパッケージは要りません。
 
 ```sh
-packages/pdf/scripts/test.sh   # docker build → コンテナ内で tsc --noEmit と vitest run
+packages/pdf/scripts/test.sh   # ルートの scripts/test.sh packages/pdf を呼ぶ（Docker の中で tsc --noEmit と vitest run）
 ```
 
 - テスト用 PDF は pdf-lib でテスト実行時に合成します。
-- 日本語フォント（Noto Sans JP、SIL Open Font License）は Dockerfile で取得し、リポジトリには入れません。
+- 日本語フォント（Noto Sans JP、SIL Open Font License）はルートの `docker/test.Dockerfile` で取得し、リポジトリには入れません。
 
 ## 大学のポリシーについて
 

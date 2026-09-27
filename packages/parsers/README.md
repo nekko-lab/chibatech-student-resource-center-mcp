@@ -78,7 +78,7 @@ findTeachers(table, { department: "情報工学科", year: 2 });
 実行はすべて Docker の中で行います（ホストに node やパッケージを入れません）。
 
 ```sh
-./scripts/test.sh   # docker build → コンテナ内で tsc --noEmit と vitest run
+./scripts/test.sh   # ルートの scripts/test.sh packages/parsers を呼ぶ（Docker の中で tsc --noEmit と vitest run）
 ```
 
 - テストの fixture は、実物と**同じ幾何構造を持つ合成データ**を生成器（`test/fixtures/*-generator.ts`）で作ります。架空の時刻・架空の氏名だけを使います。

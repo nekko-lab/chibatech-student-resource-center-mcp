@@ -142,11 +142,7 @@ searchByKeyword<T>(query: string, items: T[], getText: (t: T) => string,
 すべて Docker の中で実行します。ホストに node やパッケージを入れないでください。
 
 ```sh
-packages/match/scripts/test.sh   # docker build のあと、コンテナの中で tsc --noEmit と vitest run
+packages/match/scripts/test.sh   # ルートの scripts/test.sh packages/match を呼ぶ（Docker の中で tsc --noEmit と vitest run）
 ```
 
-依存を変えてロックファイルを作り直すとき:
-
-```sh
-docker build --target lockfile --output type=local,dest=packages/match packages/match
-```
+依存を足すときは、ルートの `docs/development.md` の「依存の追加と lockfile の更新」に従ってください（lockfile はルートの 1 つだけです）。

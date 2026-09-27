@@ -95,7 +95,7 @@ const fake = await installFakePortal(context); // Page でも可。{ baseUrl } �
 実行はすべて Docker の中で行います。ホストに Node・Bun・ブラウザを入れる必要はありません。
 
 ```sh
-./scripts/test.sh          # docker build → コンテナ内で型検査とテスト
+./scripts/test.sh          # ルートの scripts/test.sh packages/portal を呼ぶ（Docker の中で型検査とテスト）
 LIVE=1 ./scripts/test.sh   # 実サイトへのライブ確認 1 本も実行する
 ```
 
