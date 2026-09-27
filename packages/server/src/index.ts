@@ -5,4 +5,6 @@
  */
 export { USER_AGENT, VERSION } from "./version.ts";
 export { depsFromEnv } from "./env.ts";
+export { createServer, toolDefinitions } from "./server.ts";
+export { runStdio } from "./stdio.ts";
 export type { ServerDeps, StudentProfile } from "./types.ts";

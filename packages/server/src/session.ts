@@ -32,7 +32,7 @@ export class Session {
   #page: Page | undefined;
   #tail: Promise<unknown> = Promise.resolve();
   readonly #lastModified = new Map<string, string>();
-  #closed = false;
+  #closing: Promise<void> | undefined;
 
   constructor(o: SessionOptions) {
     this.#o = o;
@@ -114,16 +114,17 @@ export class Session {
     return this.#lastModified.get(stripHash(url)) ?? null;
   }
 
-  /** ブラウザを閉じる。何度呼んでもよい */
-  async close(): Promise<void> {
-    if (this.#closed && !this.#started) return;
-    this.#closed = true;
+  /** ブラウザを閉じる。何度呼んでもよく、閉じている途中に呼んでもその完了を待つ */
+  close(): Promise<void> {
     const started = this.#started;
     this.#started = undefined;
     this.#page = undefined;
-    if (!started) return;
-    const s = await started.catch(() => undefined);
-    await s?.context.close().catch(() => undefined);
-    await s?.browser.close().catch(() => undefined);
+    if (!started) return this.#closing ?? Promise.resolve();
+    this.#closing = (async () => {
+      const s = await started.catch(() => undefined);
+      await s?.context.close().catch(() => undefined);
+      await s?.browser.close().catch(() => undefined);
+    })();
+    return this.#closing;
   }
 }

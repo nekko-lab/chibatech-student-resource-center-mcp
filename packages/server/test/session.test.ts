@@ -123,6 +123,15 @@ describe("Session", () => {
     expect(own.isConnected()).toBe(false);
     await s.close(); // 2 回目も安全
   });
+
+  it("閉じている途中に close を呼んでも、閉じ終わるまで待つ", async () => {
+    const own = await chromium.launch();
+    const s = new Session({ getBrowser: async () => ({ browser: own, via: "own" }), userAgent: "x", log: () => undefined });
+    await s.run(() => s.page());
+    void s.close();
+    await s.close();
+    expect(own.isConnected()).toBe(false);
+  });
 });
 
 describe("requestFetcher（context.request を包む）", () => {
