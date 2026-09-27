@@ -6,6 +6,7 @@
  * - LAYOUT_CHANGED は推測で補わず、その旨を返す
  * - エラーは code と details を読める形で返す
  * - 曖昧なときは候補を返して聞き返す（needs_clarification。エラーではない）
+ * - 途中までの結果は partial（search_documents の索引作りが時間の上限に達したとき。エラーではない）
  */
 import { PdfFetchError } from "@chibatech-src/pdf";
 import { PortalError } from "@chibatech-src/portal";
@@ -31,10 +32,16 @@ export interface Source {
 
 export type Outcome =
   | { status: "ok"; data: Record<string, unknown>; sources: Source[] }
+  | { status: "partial"; data: Record<string, unknown>; sources: Source[] }
   | { status: "needs_clarification"; question: string; candidates: unknown[]; data?: Record<string, unknown>; sources: Source[] };
 
 export function ok(data: Record<string, unknown>, sources: Source[]): Outcome {
   return { status: "ok", data, sources };
+}
+
+/** 途中までの結果（続きは同じ呼び出しを繰り返すと得られる） */
+export function partial(data: Record<string, unknown>, sources: Source[]): Outcome {
+  return { status: "partial", data, sources };
 }
 
 export function clarify(question: string, candidates: unknown[], sources: Source[], data?: Record<string, unknown>): Outcome {
@@ -81,7 +88,7 @@ export class Responder {
   }
 
   success(o: Outcome): ToolResponse {
-    if (o.status === "ok") return this.#wrap({ status: "ok", ...o.data, sources: o.sources }, false);
+    if (o.status === "ok" || o.status === "partial") return this.#wrap({ status: o.status, ...o.data, sources: o.sources }, false);
     const body: Record<string, unknown> = { status: o.status, question: o.question, candidates: o.candidates };
     if (o.data) Object.assign(body, o.data);
     body.sources = o.sources;

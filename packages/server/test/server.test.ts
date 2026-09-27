@@ -39,6 +39,7 @@ const MACROS = [
   "find_manual",
   "get_absence_form",
   "find_contact",
+  "search_documents",
 ];
 
 type CallResult = { content: { type: string; text: string }[]; isError?: boolean };
@@ -114,6 +115,11 @@ describe("MCP サーバ（in-memory transport・合成サイト）", () => {
     expect(h.tb.launches).toBe(0);
     const read = tools.find((t) => t.name === "document_read_text")!;
     expect(read.inputSchema.required).toEqual(["url"]);
+    const search = tools.find((t) => t.name === "search_documents")!;
+    expect(search.inputSchema.required).toEqual(["query"]);
+    expect(search.description).toMatch(/^（非公式）/);
+    expect(search.description).toMatch(/項目名/);
+    expect(h.client.getInstructions()).toMatch(/search_documents/);
   });
 
   it("最初の応答にだけ非公式の注記が付き、ブラウザは 1 回だけ起動する", async () => {
@@ -249,6 +255,25 @@ describe("MCP サーバ（in-memory transport・合成サイト）", () => {
     expect(blocked.every((u) => !u.startsWith(BASE))).toBe(true);
     expect(h.fetch.requests.every((r) => r.url.startsWith(BASE))).toBe(true);
   });
+});
+
+describe("search_documents（MCP 経由）", () => {
+  it("共通の PDF の本文を検索し、抜粋とページを返す（担任表は取得しない）", async () => {
+    const h = await connect();
+    try {
+      const r = await h.call("search_documents", { query: "cat_04_01 page 3", limit: 3 });
+      expect(r.body.status).toBe("ok");
+      expect(r.body.scope).toBe("common");
+      const hits = r.body.hits as { url: string; page: number; title: string; excerpts: string[] }[];
+      expect(hits[0]).toMatchObject({ url: `${BASE}whole/web_manual/cat_04_01.pdf`, page: 3, title: "架空の旅費援助 要項" });
+      expect(hits[0]!.excerpts[0]).toContain("cat_04_01");
+      expect(r.body.index).toMatchObject({ complete: true });
+      expect(h.fetch.requests.some((q) => q.url.includes("advisers"))).toBe(false);
+      expect(h.fetch.requests.some((q) => /\.(xlsx|doc)$/.test(q.url))).toBe(false);
+    } finally {
+      await h.close();
+    }
+  }, 30_000);
 });
 
 describe("document_download（MCP 経由）", () => {

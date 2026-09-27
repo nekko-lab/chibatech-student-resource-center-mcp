@@ -1,7 +1,7 @@
 import { PdfFetchError } from "@chibatech-src/pdf";
 import { PortalError } from "@chibatech-src/portal";
 import { describe, expect, it } from "vitest";
-import { NOTICE, Responder, clarify, ok } from "../src/respond.ts";
+import { NOTICE, Responder, clarify, ok, partial } from "../src/respond.ts";
 
 const json = (r: { content: { type: string; text: string }[] }) => JSON.parse(r.content.at(-1)!.text) as Record<string, unknown>;
 
@@ -20,6 +20,14 @@ describe("Responder", () => {
       a: 1,
       sources: [{ title: "t", url: "https://example.test/a.pdf", pages: [2], lastModified: null }],
     });
+  });
+
+  it("partial は status を partial にして中身と出典を返す（エラーではない）", () => {
+    const r = new Responder();
+    r.success(ok({}, []));
+    const res = r.success(partial({ progress: { indexed: 1, total: 3 } }, []));
+    expect(res.isError).toBeUndefined();
+    expect(json(res)).toEqual({ status: "partial", progress: { indexed: 1, total: 3 }, sources: [] });
   });
 
   it("エラーが最初でも注記を付け、code と details を読める形で返す", () => {

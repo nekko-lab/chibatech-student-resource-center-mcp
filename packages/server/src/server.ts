@@ -7,16 +7,20 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { DocumentService } from "./docs.ts";
 import type { MacroEnv } from "./macros/ports.ts";
 import { PortalService } from "./portal-port.ts";
+import { DocumentIndex } from "./search/indexer.ts";
+import { FsIndexStore } from "./search/store.ts";
 import { Responder, describeError } from "./respond.ts";
 import { Session } from "./session.ts";
 import { TOOLS, type ToolContext } from "./tools.ts";
 import type { ServerDeps } from "./types.ts";
 import { SERVER_NAME, VERSION } from "./version.ts";
 
-const INSTRUCTIONS =
+export const INSTRUCTIONS =
   "千葉工業大学「学生資料室」ポータル（ログイン不要の公開ページ）を操作する非公式のツールです。大学の公式情報ではありません。" +
   "学生の質問には、まずマクロ（find_department_page / lookup_requirements / lookup_handbook_topic / get_academic_calendar / " +
-  "get_bus_schedule / find_class_teacher / find_manual / get_absence_form / find_contact）を使ってください。" +
+  "get_bus_schedule / find_class_teacher / find_manual / get_absence_form / find_contact / search_documents）を使ってください。" +
+  "項目名や資料名に出てこない語（GPA・再履修・学割・追試など）は search_documents で PDF の本文から探し、" +
+  "status が partial なら同じ引数でもう一度呼んでください。" +
   "status が needs_clarification のときは candidates を学生に示して聞き返してください。" +
   "回答には sources（資料名・URL・ページ・Last-Modified）を添え、正式な手続きは原本で確認するよう伝えてください。" +
   "error.code が LAYOUT_CHANGED のときは推測で補わず、サイトの構造が変わった可能性がある旨を伝えてください。";
@@ -60,7 +64,8 @@ export function createServer(deps: ServerDeps): McpServer {
     now: deps.now ?? (() => new Date()),
     profile: deps.profile ?? {},
   };
-  const ctx: ToolContext = { session, docs, env, baseUrl };
+  const searchIndex = new DocumentIndex({ log, ...(deps.cacheDir ? { store: new FsIndexStore(deps.cacheDir) } : {}) });
+  const ctx: ToolContext = { session, docs, env, baseUrl, searchIndex };
   const responder = new Responder();
 
   const server = new McpServer({ name: SERVER_NAME, version: VERSION }, { instructions: INSTRUCTIONS });
