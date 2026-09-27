@@ -1,0 +1,21 @@
+# docker/build.Dockerfile 専用の除外（ビルドコンテキストはリポジトリのルート）
+# poc/ は検証用のエントリ（poc/src/launcher.ts）に使うので含める。
+.git
+.github
+.claude
+.devcontainer
+container
+**/node_modules
+**/dist
+**/coverage
+**/out
+**/.cache
+**/.research
+**/*.pdf
+**/*.log
+**/*.tsbuildinfo
+**/pdfx_*
+**/bld_*
+**/.DS_Store
+**/.env
+**/.env.*
