@@ -10,3 +10,20 @@ export {
   type FetchPdfResult,
   type Fetcher,
 } from "./fetch.ts";
+export {
+  extractItems,
+  extractText,
+  pageCount,
+  type PageItems,
+  type PageText,
+  type TextItem,
+} from "./extract.ts";
+export {
+  dirPdfAssets,
+  getPdfAssets,
+  mapPdfAssets,
+  noPdfAssets,
+  pdfjsDistAssets,
+  setPdfAssets,
+  type PdfAssets,
+} from "./assets.ts";
