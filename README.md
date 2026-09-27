@@ -17,7 +17,7 @@
 
 [Releases](https://github.com/nekko-lab/chibatech-student-resource-center-mcp/releases/latest) から、使うアプリに合うファイルを取得します。Node などの実行環境は要りません。
 
-**Claude Desktop（macOS / Windows）**: `.mcpb` をダブルクリックしてインストールします。
+**Claude Desktop（macOS / Windows）**: `.mcpb` をダブルクリックしてインストールします。macOS は Apple シリコン（M1 以降）のみ対応です。
 
 **Claude Code**: OS に合う単体バイナリを置き、登録します。
 
@@ -45,3 +45,7 @@ command = "/path/to/<バイナリ>"
 
 - [開発手順](docs/development.md)
 - [チームの開発運用](docs/team-workflow.md)
+
+## ライセンス
+
+[MIT](LICENSE)（ネットワークコンテンツ研究会 (Nekko Lab)）
