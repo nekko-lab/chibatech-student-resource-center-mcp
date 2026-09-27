@@ -1,0 +1,6 @@
+node_modules/
+dist/
+coverage/
+# レイアウト観察用に取得した実 PDF と抽出結果（公開リポジトリには含めない）
+.research/
+*.pdf

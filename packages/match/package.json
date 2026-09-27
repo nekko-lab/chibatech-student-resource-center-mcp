@@ -1,0 +1,21 @@
+{
+  "name": "@chibatech-src/match",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Japanese fuzzy matching for department options, document titles, admission years and student types (pure functions, runtime neutral).",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "5.9.2",
+    "vitest": "3.2.4"
+  }
+}

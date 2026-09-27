@@ -1,0 +1,322 @@
+# 非公式 MCP サーバ（千葉工業大学 学生資料室）の単一バイナリ・mcpb のビルドとリリース。
+#
+#   build   ubuntu 上の Docker（docker/build.Dockerfile）で全ターゲットをクロスコンパイルする。
+#           mcpb を公式 CLI で検査し、bun / node の無いコンテナ（ネットワーク無し）で linux-x64 を起動する
+#   smoke   各 OS のランナーでバイナリを直接起動し、initialize → tools/list まで確かめる（serverInfo.version も）。
+#           埋め込んだ CMap が単一バイナリの中から読めることも、合成 PDF で確かめる。
+#           macOS（Apple シリコン）は codesign -v が valid でなければ落とす
+#   release main のコミットに人が付けたタグ（v + SemVer）の push のときだけ、gh release create で
+#           バイナリ・mcpb・SHA256SUMS・THIRD_PARTY_NOTICES.txt・LICENSE を添付する。タグはワークフローから作らない
+#
+# 起動: タグ v* の push（Release まで）、main への push と workflow_dispatch（build と smoke だけ。artifact を残す）。
+# サイトにはアクセスしない（ツールを呼ばない。コンテナは --network none）。
+# サイトのコンテンツは artifact にも Release にも入れない。Release の説明にサイトへの直リンクを貼らない。
+#
+# 入口（ENTRY）は今は検証用の poc/src/launcher.ts。本番の入口への切り替えは別タスクで、
+# workflow_dispatch の入力か、リポジトリ変数 CSRC_RELEASE_ENTRY / CSRC_RELEASE_TOOLS で行う（タグの push でも効く）。
+name: release
+
+on:
+  push:
+    tags: ['v*']
+    branches: [main]
+  pull_request: # TEMPORARY: この PR の確認用。最後のコミットで消す
+    branches: [dev]
+  workflow_dispatch:
+    inputs:
+      entry:
+        description: 単一バイナリの入口（リポジトリのルートからのパス）
+        type: string
+        default: poc/src/launcher.ts
+      tools:
+        description: mcpb の tools に載せる JSON（[{ name, description }]）
+        type: string
+        default: tools/build/fixtures/poc-tools.json
+      version:
+        description: SemVer（v を付けない）。空なら 0.0.0-dev.<run_number>
+        type: string
+        default: ''
+      baseline:
+        description: x64 の -baseline 版（古い CPU 向け。Windows / Linux）も作る
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  ENTRY: ${{ inputs.entry || vars.CSRC_RELEASE_ENTRY || 'poc/src/launcher.ts' }}
+  TOOLS: ${{ inputs.tools || vars.CSRC_RELEASE_TOOLS || 'tools/build/fixtures/poc-tools.json' }}
+  BASELINE: ${{ inputs.baseline && '--baseline' || '' }}
+  NAME: chibatech-src-mcp
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # タグのコミットが main から到達できるかを確かめるため、履歴をすべて取る
+          fetch-depth: 0
+
+      - name: Version (tag must be v + SemVer on main)
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          semver='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            case "$GITHUB_REF_NAME" in v*) ;; *) echo "タグ名は v + SemVer: $GITHUB_REF_NAME" >&2; exit 1 ;; esac
+            v="${GITHUB_REF_NAME#v}"
+            git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+            if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+              echo "タグ $GITHUB_REF_NAME のコミット $GITHUB_SHA は main から到達できません。Release を作りません" >&2
+              exit 1
+            fi
+            echo "タグ $GITHUB_REF_NAME は main 上のコミットです"
+          else
+            v="${INPUT_VERSION:-0.0.0-dev.$GITHUB_RUN_NUMBER}"
+          fi
+          if ! printf '%s' "$v" | grep -Eq "$semver"; then
+            echo "version が SemVer ではありません: $v" >&2
+            exit 1
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "tag=v$v" >> "$GITHUB_OUTPUT"
+          echo "version=$v entry=$ENTRY tools=$TOOLS baseline=${BASELINE:-no}"
+
+      - name: Build (docker, cross-compile)
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          docker build -f docker/build.Dockerfile --target artifacts \
+            --build-arg "ENTRY=$ENTRY" --build-arg "TOOLS=$TOOLS" --build-arg "VERSION=$VERSION" \
+            --build-arg "BUILD_ARGS=$BASELINE" \
+            --output type=local,dest=build-out .
+          ls -la build-out/dist build-out/dist/bin build-out/dist/mcpb build-out/probe/bin
+          (cd build-out/dist && sha256sum -c SHA256SUMS)
+
+      - name: Validate mcpb (official CLI, version, contents)
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          docker build -f docker/build.Dockerfile --target mcpb-validate \
+            --build-arg "ENTRY=$ENTRY" --build-arg "TOOLS=$TOOLS" --build-arg "VERSION=$VERSION" \
+            --build-arg "BUILD_ARGS=$BASELINE" .
+          mcpb="build-out/dist/mcpb/$NAME-$VERSION.mcpb"
+          unzip -l "$mcpb"
+          unzip -p "$mcpb" manifest.json | jq '{name, version, license, server, compatibility}'
+          # manifest の version がビルドの版と一致すること
+          [ "$(unzip -p "$mcpb" manifest.json | jq -r .version)" = "$VERSION" ]
+          # mcpb の中の実行ファイルとライセンス表記が、単体で添付するものと同じであること
+          same() { [ "$(unzip -p "$mcpb" "$1" | sha256sum | cut -d' ' -f1)" = "$(sha256sum "$2" | cut -d' ' -f1)" ]; }
+          same "server/$NAME" "build-out/dist/bin/$NAME-darwin-arm64"
+          same "server/$NAME.exe" "build-out/dist/bin/$NAME-windows-x64.exe"
+          same THIRD_PARTY_NOTICES.txt build-out/dist/THIRD_PARTY_NOTICES.txt
+          if [ -f build-out/dist/LICENSE ]; then same LICENSE build-out/dist/LICENSE; else echo "::warning::LICENSE がまだリポジトリにありません"; fi
+
+      - name: Container smoke (no bun / no node / no network, linux-x64)
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          docker build -f docker/build.Dockerfile --target runtime -t csrc-runtime \
+            --build-arg "ENTRY=$ENTRY" --build-arg "TOOLS=$TOOLS" --build-arg "VERSION=$VERSION" \
+            --build-arg "BUILD_ARGS=$BASELINE" .
+          if docker run --rm csrc-runtime which bun node npx; then echo "bun / node がある" >&2; exit 1; fi
+          # 版を埋め込めた入口（packages/server を含む）なら serverInfo.version も確かめる
+          expect=""
+          if [ "$(jq '.versionPatched | length' build-out/dist/build-report.json)" -gt 0 ]; then expect="$VERSION"; fi
+          docker run --rm --network none -e "PROBE_EXPECT_VERSION=$expect" csrc-runtime \
+            sh /opt/csrc/scripts/mcp-probe.sh "/opt/csrc/dist/bin/$NAME-linux-x64" /opt/csrc/tools.json
+          docker run --rm --network none csrc-runtime /opt/csrc/probe/bin/csrc-cmap-probe-linux-x64 > cmap.json
+          jq -e '.ok' cmap.json
+          jq -c '{checks, withAssets}' cmap.json
+
+      - name: Summary
+        if: ${{ always() }}
+        run: |
+          [ -f build-out/dist/build-report.json ] || exit 0
+          r=build-out/dist/build-report.json
+          {
+            echo '### build'
+            echo
+            jq -r '"entry: `\(.entry)` / version: `\(.version)` / bun \(.bun) / macOS signing: \(.darwinSigning)"' "$r"
+            jq -r '"version embedded in: \(if (.versionPatched | length) > 0 then (.versionPatched | join(", ")) else "（入口に packages/server が無い）" end)"' "$r"
+            echo
+            echo '| file | bytes |'
+            echo '|---|---|'
+            jq -r '.targets[] | "| \(.binary.path) | \(.binary.bytes) |"' "$r"
+            jq -r '.mcpb | if . then "| \(.path) (\(.contents | map(.path) | join(", "))) | \(.bytes) |" else empty end' "$r"
+            jq -r '"| \(.notices.path) (\(.notices.sections | length) sections) | \(.notices.bytes) |"' "$r"
+            jq -r '.license | if . then "| \(.path) | \(.bytes) |" else "| LICENSE | （まだ無い） |" end' "$r"
+            echo
+            jq -r '.pdfAssets | "pdf assets: cmaps \(.cMaps.count) files / \(.cMaps.bytes) B, standard fonts \(.standardFonts.count) files / \(.standardFonts.bytes) B"' "$r"
+            jq -r '"playwright-core patched: \(.playwrightCorePatched | join(", "))"' "$r"
+            echo
+            echo '```'
+            cat build-out/dist/SHA256SUMS
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Stage per-runner artifacts
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -eu
+          expect=""
+          if [ "$(jq '.versionPatched | length' build-out/dist/build-report.json)" -gt 0 ]; then expect="$VERSION"; fi
+          for t in darwin-arm64 windows-x64 linux-x64 linux-arm64; do
+            d="smoke/$t"
+            mkdir -p "$d/bin" "$d/probe"
+            cp build-out/scripts/mcp-probe.sh build-out/tools.json "$d/"
+            printf '%s' "$expect" > "$d/expect-version"
+            cp build-out/dist/bin/*-"$t"* "$d/bin/"
+            cp build-out/probe/bin/*-"$t"* "$d/probe/"
+          done
+          find smoke -type f | sort
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          path: build-out/dist/
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: smoke-darwin-arm64
+          path: smoke/darwin-arm64/
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: smoke-windows-x64
+          path: smoke/windows-x64/
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: smoke-linux-x64
+          path: smoke/linux-x64/
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: smoke-linux-arm64
+          path: smoke/linux-arm64/
+          retention-days: 3
+
+  smoke:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS は Apple シリコン（M1 以降）だけを対象にする（Intel Mac は対象外）
+          - os: macos-latest
+            target: darwin-arm64
+          - os: windows-latest
+            target: windows-x64
+          - os: ubuntu-latest
+            target: linux-x64
+          - os: ubuntu-24.04-arm
+            target: linux-arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    env:
+      EXT: ${{ matrix.target == 'windows-x64' && '.exe' || '' }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: smoke-${{ matrix.target }}
+          path: smoke
+
+      - name: Prepare
+        id: prep
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          chmod +x smoke/bin/* smoke/probe/* 2>/dev/null || true
+          ls -laR smoke
+          uname -a
+          # 実行ファイルは bun / node に頼らない（ランナーにある node は使わない）
+          server="smoke/bin/$NAME-$TARGET$EXT"
+          probe="smoke/probe/csrc-cmap-probe-$TARGET$EXT"
+          [ -e "$server" ] && [ -e "$probe" ]
+          echo "server=$server" >> "$GITHUB_OUTPUT"
+          echo "probe=$probe" >> "$GITHUB_OUTPUT"
+
+      - name: Signature (macOS, must be valid)
+        if: ${{ runner.os == 'macOS' }}
+        env:
+          SERVER: ${{ steps.prep.outputs.server }}
+        # Bun が付ける ad-hoc 署名のまま（公証なし）。codesign -v が通らなければ落とす
+        run: |
+          file "$SERVER"
+          echo "lipo -archs: $(lipo -archs "$SERVER")"
+          codesign -dv --verbose=2 "$SERVER" 2>&1 | grep -E 'Identifier|Format|flags|Signature|Authority|TeamIdentifier' || true
+          codesign -v --verbose=2 "$SERVER"
+          echo "codesign -v: valid"
+
+      - name: MCP initialize → tools/list (and serverInfo.version)
+        env:
+          SERVER: ${{ steps.prep.outputs.server }}
+        run: |
+          PROBE_EXPECT_VERSION="$(cat smoke/expect-version)"
+          export PROBE_EXPECT_VERSION
+          echo "expect version: ${PROBE_EXPECT_VERSION:-（入口に packages/server が無いため確かめない）}"
+          sh smoke/mcp-probe.sh "$SERVER" smoke/tools.json
+
+      - name: Embedded CMap (setPdfAssets, synthetic PDF)
+        env:
+          PROBE: ${{ steps.prep.outputs.probe }}
+        run: |
+          "$PROBE" > cmap.json
+          cat cmap.json
+          grep -q '"ok":true' cmap.json
+
+  release:
+    needs: [build, smoke]
+    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+          path: dist
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.build.outputs.tag }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          set -eu
+          (cd dist && sha256sum -c SHA256SUMS)
+          [ "$TAG" = "$GITHUB_REF_NAME" ]
+          cat > notes.md <<'EOF'
+          **非公式ツールです。** 千葉工業大学および「学生資料室」ポータルの運営者とは関係ありません。
+
+          - `*.mcpb`: Claude Desktop 用（macOS と Windows x64 の共通パッケージ）
+          - `chibatech-src-mcp-<OS>-<CPU>`: 単体バイナリ（Claude Code / Codex などから直接起動）
+          - 対応: macOS は Apple シリコン（M1 以降）のみ、Windows は x64、Linux は x64 / arm64
+          - `SHA256SUMS`: `sha256sum -c SHA256SUMS` で検査できます
+          - `THIRD_PARTY_NOTICES.txt`: 同梱しているソフトウェアのライセンス、`LICENSE`: このツールのライセンス（MIT）
+
+          署名: macOS は Bun が付ける ad-hoc 署名のみで公証はなく、Windows は署名がありません。ブラウザでダウンロードした場合は、初回に OS の警告が出ます。
+          EOF
+          files=(dist/bin/* dist/mcpb/*.mcpb dist/SHA256SUMS dist/THIRD_PARTY_NOTICES.txt)
+          [ -f dist/LICENSE ] && files+=(dist/LICENSE)
+          flags=(--verify-tag)
+          case "$VERSION" in *-*) flags+=(--prerelease) ;; esac
+          gh release create "$TAG" "${files[@]}" --title "$TAG" --notes-file notes.md --generate-notes "${flags[@]}"

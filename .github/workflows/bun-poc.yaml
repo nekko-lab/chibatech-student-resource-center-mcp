@@ -1,0 +1,199 @@
+# 非公式 PoC: Bun 単一バイナリ × playwright-core の成立性検証。
+#
+#   build           ubuntu 上の Docker で全ターゲットをクロスコンパイルし、ターゲットごとに artifact へ渡す
+#   container-smoke bun / node を含まない素の Debian（linux-x64）で、初回ダウンロード経路を検証する
+#   smoke           各 OS のランナーでバイナリを直接起動し、chrome / msedge / download の各経路を検証する
+#
+# サイトのコンテンツ（HTML・PDF・本文）は artifact にもログにも残さない。
+# smoke の JSON は URL のパス・件数・文字数・所要時間だけを持つ。
+# サイトへの負荷を抑えるため、トリガーは PoC のファイルを変えた PR と手動実行だけにする。
+name: bun-poc
+
+on:
+  pull_request:
+    paths:
+      - 'poc/**'
+      - '.github/workflows/bun-poc.yaml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bun-poc-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build (docker, cross-compile)
+        run: docker build -f poc/Dockerfile --target build -t bunpoc-build poc
+
+      - name: Extract binaries
+        run: |
+          id="$(docker create bunpoc-build)"
+          docker cp "$id:/poc/out" poc/out
+          docker rm "$id"
+          ls -la poc/out poc/out/mcpb
+          cat poc/out/build-report.json
+          {
+            echo '### build-report.json'
+            echo '```json'
+            cat poc/out/build-report.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bin-linux-x64
+          path: poc/out/csrc-poc-*-linux-x64
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bin-darwin-arm64
+          path: poc/out/csrc-poc-*-darwin-arm64
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bin-darwin-x64
+          path: poc/out/csrc-poc-*-darwin-x64
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bin-windows-x64
+          path: poc/out/csrc-poc-*-windows-x64.exe
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mcpb
+          path: poc/out/mcpb/*.mcpb
+          retention-days: 3
+
+  container-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build runtime image (no bun / no node)
+        run: docker build -f poc/Dockerfile --target runtime -t bunpoc poc
+
+      - name: Runtime has no bun / node
+        run: |
+          out="$(docker run --rm -v "$PWD/poc/scripts:/scripts:ro" bunpoc sh /scripts/container-check.sh env)"
+          echo "$out"
+          echo "$out" | grep -q 'bun: absent'
+          echo "$out" | grep -q 'node: absent'
+
+      - name: Known risk 3 (unpatched bundle fails to start)
+        run: docker run --rm -v "$PWD/poc/scripts:/scripts:ro" bunpoc sh /scripts/container-check.sh risk3
+
+      - name: Smoke twice (download path, first run and cached run)
+        run: |
+          docker run --rm -e CSRC_DISABLE_CHANNELS=1 -e SMOKE_EXPECT_VIA=download \
+            -v "$PWD/poc/scripts:/scripts:ro" bunpoc sh /scripts/container-check.sh twice | tee smoke.txt
+          grep -q 'first exit=0' smoke.txt
+          grep -q 'second exit=0' smoke.txt
+          {
+            echo '### container (debian bookworm-slim, linux-x64)'
+            echo '```'
+            cat smoke.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  smoke:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux-x64
+            ext: ''
+            edge: false
+          - os: macos-latest
+            target: darwin-arm64
+            ext: ''
+            edge: true
+          # macos-13 は GitHub 側で提供終了のため、x64 の macOS は macos-15-intel で確かめる
+          - os: macos-15-intel
+            target: darwin-x64
+            ext: ''
+            edge: true
+          - os: windows-latest
+            target: windows-x64
+            ext: '.exe'
+            edge: true
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
+    env:
+      SERVER: bin/csrc-poc-server-${{ matrix.target }}${{ matrix.ext }}
+      SMOKE: bin/csrc-poc-smoke-${{ matrix.target }}${{ matrix.ext }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: bin-${{ matrix.target }}
+          path: bin
+
+      - name: Prepare
+        run: |
+          chmod +x bin/* || true
+          ls -la bin
+          uname -a
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            file "$SERVER" || true
+            codesign -dv "$SERVER" 2>&1 || true
+          fi
+          # 学生の PC と同じく bun / node に頼らないことを確かめるため、有無だけ記録する
+          command -v bun || echo 'bun: absent'
+          command -v node || echo 'node: present only on runner, not used by the binaries'
+
+      - name: Smoke (channel chrome)
+        id: chrome
+        env:
+          CSRC_CHANNELS: chrome
+          SMOKE_EXPECT_VIA: chrome
+        run: |
+          "$SMOKE" "$SERVER" --out "$RUNNER_TEMP/smoke-chrome.json"
+
+      - name: Smoke (channel msedge)
+        id: msedge
+        if: ${{ matrix.edge && (success() || failure()) }}
+        env:
+          CSRC_CHANNELS: msedge
+          SMOKE_EXPECT_VIA: msedge
+        run: |
+          "$SMOKE" "$SERVER" --out "$RUNNER_TEMP/smoke-msedge.json"
+
+      - name: Smoke (no channel, first-run download)
+        id: download
+        if: ${{ success() || failure() }}
+        env:
+          CSRC_DISABLE_CHANNELS: '1'
+          SMOKE_EXPECT_VIA: download
+        run: |
+          export PLAYWRIGHT_BROWSERS_PATH="$RUNNER_TEMP/pw-browsers"
+          "$SMOKE" "$SERVER" --out "$RUNNER_TEMP/smoke-download.json"
+          du -sh "$PLAYWRIGHT_BROWSERS_PATH"/* || true
+
+      - name: Summary
+        if: ${{ always() }}
+        run: |
+          {
+            echo "### ${{ matrix.target }} (${{ matrix.os }})"
+            for f in "$RUNNER_TEMP"/smoke-*.json; do
+              [ -f "$f" ] || continue
+              echo "#### $(basename "$f")"
+              echo '```json'
+              cat "$f"
+              echo
+              echo '```'
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
