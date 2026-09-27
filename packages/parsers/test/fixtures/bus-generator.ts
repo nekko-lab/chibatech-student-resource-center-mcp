@@ -6,7 +6,7 @@
  * - 中央に「時刻」列、左右に「〇〇発 / 〇〇行」の方向ブロック
  * - 曜日区分の見出しは 1 文字ずつ離して置かれる（均等割付）か、縦に積まれる
  * - 分は曜日区分の中で複数の小列に並び、左側は時刻列に近いほど早い（鏡像）
- * - 注記付きの分は分が少し上に、注記「（茜55）」がその下にずれる。注記が 2 片に割れることもある
+ * - 注記付きの分は分が少し上に、注記「（茜XX）」がその下にずれる。注記が 2 片に割れることもある
  * - 空文字の item、幅だけ持つ空白 item が混ざる
  */
 import type { PageItems, TextItem } from "../../src/types.ts";
@@ -271,7 +271,7 @@ export function sampleBusFixture(overrides: Partial<BusFixture> = {}): BusFixtur
         },
         {
           header: ["土 曜"],
-          departures: { 9: [{ min: 10 }], 12: [{ min: 40, note: "茜55" }] },
+          departures: { 9: [{ min: 10 }], 12: [{ min: 40, note: "茜58" }] },
         },
         { header: ["日曜日", "祝日", "休日"], departures: { 10: [{ min: 20 }] } },
         { header: ["１２月24日", "（金）"], departures: { 8: [{ min: 50 }], 9: [{ min: 50 }] } },

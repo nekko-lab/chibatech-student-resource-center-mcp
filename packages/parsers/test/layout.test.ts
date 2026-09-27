@@ -79,6 +79,6 @@ describe("columnBoundaries", () => {
 
 describe("normalize", () => {
   it("NFKC で全角英数・括弧を半角にし、空白を取り除く", () => {
-    expect(normalize("１２月 23日（水）")).toBe("12月23日(水)");
+    expect(normalize("１２月 24日（金）")).toBe("12月24日(金)");
   });
 });
