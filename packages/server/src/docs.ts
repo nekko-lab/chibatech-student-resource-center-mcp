@@ -18,6 +18,7 @@ import {
   type PageItems,
   type PageText,
   type PdfCache,
+  type PdfCacheEntry,
 } from "@chibatech-src/pdf";
 import { PortalError } from "@chibatech-src/portal";
 
@@ -58,9 +59,32 @@ export interface Download {
   lastModified: string | null;
 }
 
+/** 取得した PDF の版を見分ける値（サーバが送らなかったものは null） */
+export interface Validators {
+  lastModified: string | null;
+  etag: string | null;
+}
+
+/** 全文検索の索引作りに使う、PDF の全ページの本文（known と版が同じなら本文を取り出さない） */
+export type FullTextRead =
+  | ({ url: string; title: string; unchanged: true } & Validators)
+  | ({ url: string; title: string; unchanged: false; pageCount: number; pages: PageText[] } & Validators);
+
+/** 索引に入れる 1 本あたりの最大ページ数 */
+export const MAX_INDEX_PAGES = 400;
+
+/** 版が同じか（ETag が両方にあれば ETag で、無ければ Last-Modified で比べる。どちらも無ければ同じとみなさない） */
+export function sameVersion(a: Validators, b: Validators): boolean {
+  if (a.etag !== null && b.etag !== null) return a.etag === b.etag;
+  if (a.lastModified !== null && b.lastModified !== null) return a.lastModified === b.lastModified;
+  return false;
+}
+
 /** マクロが使う文書読み取りの口（テストでは合成データの実装に差し替える） */
 export interface DocPort {
   readText(url: string, opts: { from?: number; to?: number; charOffset?: number; limits?: Partial<TextLimits> }): Promise<TextRead>;
+  /** 全ページの本文（上限 maxPages、既定 MAX_INDEX_PAGES）。known と版が同じなら unchanged を返し、本文は取り出さない */
+  readAllText(url: string, opts?: { known?: Validators; maxPages?: number }): Promise<FullTextRead>;
   readItems(url: string, opts: { maxPages: number }): Promise<ItemsRead>;
   download(url: string, opts?: { filename?: string }): Promise<Download>;
 }
@@ -95,14 +119,38 @@ export function safeFileName(name: string): string {
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+/**
+ * キャッシュへの書き込みを横で覚えておく包み。fetchPdf は ETag を返さないが、200 でも 304 でも
+ * 最新の Last-Modified / ETag をキャッシュに書くので、ここで拾う。
+ */
+class ValidatorRecordingCache implements PdfCache {
+  readonly #inner: PdfCache;
+  readonly seen = new Map<string, Validators>();
+
+  constructor(inner: PdfCache) {
+    this.#inner = inner;
+  }
+
+  get(url: string): Promise<PdfCacheEntry | undefined> {
+    return this.#inner.get(url);
+  }
+
+  put(url: string, e: PdfCacheEntry): Promise<void> {
+    this.seen.set(url, { lastModified: e.lastModified ?? null, etag: e.etag ?? null });
+    return this.#inner.put(url, e);
+  }
+}
+
 export class DocumentService implements DocPort {
   readonly #o: DocumentServiceOptions;
   readonly #limits: TextLimits;
   readonly #throttle = new HostThrottle();
   readonly #host: string;
+  readonly #cache: ValidatorRecordingCache;
 
   constructor(o: DocumentServiceOptions) {
     this.#o = o;
+    this.#cache = new ValidatorRecordingCache(o.cache);
     this.#limits = { ...DEFAULT_TEXT_LIMITS, ...o.limits };
     this.#host = new URL(o.baseUrl).host;
   }
@@ -125,15 +173,27 @@ export class DocumentService implements DocPort {
     return u.href;
   }
 
-  async #fetchPdf(url: string): Promise<{ bytes: Uint8Array; lastModified: string | null }> {
+  async #fetchPdf(url: string): Promise<{ bytes: Uint8Array; lastModified: string | null; etag: string | null }> {
     const r = await fetchPdf(url, {
       fetcher: await this.#o.getFetcher(),
-      cache: this.#o.cache,
+      cache: this.#cache,
       userAgent: this.#o.userAgent,
       minIntervalMs: this.#o.minIntervalMs ?? 1000,
       throttle: this.#throttle,
     });
-    return { bytes: r.bytes, lastModified: r.lastModified ?? null };
+    const lastModified = r.lastModified ?? null;
+    return { bytes: r.bytes, lastModified, etag: this.#cache.seen.get(url)?.etag ?? null };
+  }
+
+  async readAllText(rawUrl: string, opts: { known?: Validators; maxPages?: number } = {}): Promise<FullTextRead> {
+    const url = this.resolveUrl(rawUrl);
+    const { bytes, lastModified, etag } = await this.#fetchPdf(url);
+    const base = { url, title: fileNameOf(url), lastModified, etag };
+    if (opts.known && sameVersion(opts.known, base)) return { ...base, unchanged: true };
+    const total = await pageCount(bytes);
+    const last = Math.min(total, Math.max(1, opts.maxPages ?? MAX_INDEX_PAGES));
+    const pages = total === 0 ? [] : await extractText(bytes, { from: 1, to: last });
+    return { ...base, unchanged: false, pageCount: total, pages };
   }
 
   async readText(

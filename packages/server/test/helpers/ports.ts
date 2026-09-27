@@ -13,7 +13,7 @@ import {
   type Section,
   type StudentType,
 } from "@chibatech-src/portal";
-import type { DocPort, Download, ItemsRead, TextRead } from "../../src/docs.ts";
+import type { DocPort, Download, FullTextRead, ItemsRead, TextRead } from "../../src/docs.ts";
 import type { DeptPage, Listing, MacroEnv, PortalPort } from "../../src/macros/ports.ts";
 import type { StudentProfile } from "../../src/types.ts";
 
@@ -124,6 +124,12 @@ export interface FakeDocs extends DocPort {
   texts: Map<string, string[]>;
   /** URL → 座標付きテキスト */
   layouts: Map<string, PageItems[]>;
+  /** URL → Last-Modified（readAllText が返す。無ければ LM） */
+  lastModified: Map<string, string>;
+  /** readAllText で本文を取り出した URL（到着順） */
+  extractions: string[];
+  /** readAllText の前に呼ぶ（時計を進めるなど） */
+  beforeReadAll?: (url: string) => void;
   calls: string[];
 }
 
@@ -131,12 +137,27 @@ export function fakeDocs(): FakeDocs {
   const texts = new Map<string, string[]>();
   const layouts = new Map<string, PageItems[]>();
   const calls: string[] = [];
+  const lastModified = new Map<string, string>();
+  const extractions: string[] = [];
   const title = (url: string) => new URL(url).pathname.split("/").pop() ?? url;
   const missing = (url: string) => new PortalError("NOT_FOUND", `合成データに無い URL: ${url}`, { url });
-  return {
+  const self: FakeDocs = {
     texts,
     layouts,
+    lastModified,
+    extractions,
     calls,
+    async readAllText(url, opts): Promise<FullTextRead> {
+      calls.push(`all ${url}`);
+      self.beforeReadAll?.(url);
+      const all = texts.get(url);
+      if (!all) throw missing(url);
+      const lm = lastModified.get(url) ?? LM;
+      const base = { url, title: title(url), lastModified: lm, etag: null };
+      if (opts?.known?.lastModified === lm) return { ...base, unchanged: true };
+      extractions.push(url);
+      return { ...base, unchanged: false, pageCount: all.length, pages: all.map((text, i) => ({ page: i + 1, text })) };
+    },
     async readText(url, opts): Promise<TextRead> {
       calls.push(`text ${url} ${opts.from ?? 1}-${opts.to ?? ""}`);
       const all = texts.get(url.replace(/#.*$/, ""));
@@ -162,6 +183,7 @@ export function fakeDocs(): FakeDocs {
       return { url, title: title(url), path: `/tmp/srv_fake_dl/${name}`, bytes: 10, lastModified: LM };
     },
   };
+  return self;
 }
 
 export interface FakePortalPort extends PortalPort {
