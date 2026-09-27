@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-// 枠の段階で、登録した依存がワークスペース経由で解決でき、
+// 登録した依存がワークスペース経由で解決でき、
 // server の tsconfig で各パッケージのソースを型検査できることを確かめる。
 describe("@chibatech-src/server", () => {
   it("エントリを読み込める", async () => {
