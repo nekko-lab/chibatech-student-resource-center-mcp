@@ -1,0 +1,29 @@
+{
+  "name": "@chibatech-src/portal",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Unofficial atomic Playwright operations for the Chiba Tech student resource portal, plus a synthetic test site.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./testing": {
+      "types": "./src/testing/index.ts",
+      "default": "./src/testing/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "check": "npm run typecheck && npm run test"
+  },
+  "dependencies": {
+    "playwright-core": "1.63.0"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "vitest": "5.0.2"
+  }
+}
