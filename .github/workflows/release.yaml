@@ -20,8 +20,6 @@ on:
   push:
     tags: ['v*']
     branches: [main]
-  pull_request: # TEMPORARY: この PR の確認用。最後のコミットで消す
-    branches: [dev]
   workflow_dispatch:
     inputs:
       entry:
