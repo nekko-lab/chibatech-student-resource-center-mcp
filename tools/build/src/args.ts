@@ -1,5 +1,5 @@
 /** cli.ts の引数の解釈（純関数）。 */
-import { DEFAULT_NAME, isSemver, type DarwinMode } from "./manifest.ts";
+import { DEFAULT_NAME, isSemver } from "./manifest.ts";
 
 export interface CliOptions {
   /** 単一バイナリの入口（リポジトリのルートからの相対パスか絶対パス） */
@@ -14,18 +14,18 @@ export interface CliOptions {
   baseline: boolean;
   /** false なら mcpb を作らない（検証用のバイナリだけを作るとき） */
   mcpb: boolean;
-  /** macOS の配り方。universal（既定。lipo でまとめる）/ launcher（起動スクリプトで選ぶ代替） */
-  darwin: DarwinMode;
-  /** 真なら lipo 前の darwin-arm64 / darwin-x64 と launch.sh を <out>/slices に残す（代替の検証用。Release には載せない） */
-  keepSlices: boolean;
+  /** Bun の配布物のライセンス（THIRD_PARTY_NOTICES.txt に載せる。無ければ止める） */
+  bunLicense: string;
+  /** リポジトリのライセンス（mcpb のルートと Release に入れる。無ければ警告して続ける） */
+  license: string;
 }
 
 export const USAGE =
-  "bun run tools/build/src/cli.ts --entry <file> --out <dir> --version <x.y.z> --tools <tools.json> " +
-  "[--targets a,b] [--baseline] [--name <名前>] [--no-mcpb] [--darwin universal|launcher] [--keep-slices]";
+  "bun run tools/build/src/cli.ts --entry <file> --out <dir> --version <x.y.z> --tools <tools.json> --bun-license <LICENSE.md> " +
+  "[--targets a,b] [--baseline] [--name <名前>] [--no-mcpb] [--license <LICENSE>]";
 
-const VALUED = new Set(["entry", "out", "version", "tools", "targets", "name", "darwin"]);
-const FLAGS = new Set(["baseline", "no-mcpb", "keep-slices"]);
+const VALUED = new Set(["entry", "out", "version", "tools", "targets", "name", "bun-license", "license"]);
+const FLAGS = new Set(["baseline", "no-mcpb"]);
 
 export function parseCliArgs(argv: readonly string[]): CliOptions {
   const values = new Map<string, string>();
@@ -58,9 +58,8 @@ export function parseCliArgs(argv: readonly string[]): CliOptions {
   const out = required("out");
   const version = required("version");
   const tools = required("tools");
+  const bunLicense = required("bun-license");
   if (!isSemver(version)) throw new Error(`--version は semver で（v は付けない）: ${version}`);
-  const darwin = values.get("darwin") ?? "universal";
-  if (darwin !== "universal" && darwin !== "launcher") throw new Error(`--darwin は universal か launcher: ${darwin}`);
   const targetsText = values.get("targets");
   return {
     entry,
@@ -77,7 +76,7 @@ export function parseCliArgs(argv: readonly string[]): CliOptions {
             .filter((s) => s.length > 0),
     baseline: flags.has("baseline"),
     mcpb: !flags.has("no-mcpb"),
-    darwin,
-    keepSlices: flags.has("keep-slices"),
+    bunLicense,
+    license: values.get("license") ?? "LICENSE",
   };
 }

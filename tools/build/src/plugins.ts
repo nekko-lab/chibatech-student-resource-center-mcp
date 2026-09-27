@@ -9,6 +9,7 @@
  */
 import { readFile } from "node:fs/promises";
 import type { BunPlugin } from "bun";
+import { isSemver } from "./manifest.ts";
 
 export interface ReplaceRule {
   readonly pattern: RegExp;
@@ -48,6 +49,32 @@ export function applyRules(source: string, rules: readonly ReplaceRule[], label:
 
 export function patchPlaywrightCoreSource(source: string): string {
   return applyRules(source, PLAYWRIGHT_CORE_RULES, "coreBundle.js");
+}
+
+/**
+ * サーバの版（`packages/server/src/version.ts` の `export const VERSION = "…"`）をビルドの `--version` にする。
+ * serverInfo.version と User-Agent がここから作られる。ソースは変えず、バンドル時にだけ差し替える。
+ */
+export const SERVER_VERSION_FILTER = /[\\/]packages[\\/]server[\\/]src[\\/]version\.ts$/;
+
+export function patchServerVersionSource(source: string, version: string): string {
+  if (!isSemver(version)) throw new Error(`版が semver ではありません: ${version}`);
+  return applyRules(source, [{ pattern: /export const VERSION = "[^"\n]*";/g, replacement: `export const VERSION = ${JSON.stringify(version)};` }], "version.ts");
+}
+
+export function serverVersionPlugin(version: string): { plugin: BunPlugin; patched: () => string[] } {
+  const patched: string[] = [];
+  const plugin: BunPlugin = {
+    name: "embed-server-version",
+    setup(build) {
+      build.onLoad({ filter: SERVER_VERSION_FILTER }, async (args) => {
+        const contents = patchServerVersionSource(await readFile(args.path, "utf8"), version);
+        patched.push(args.path);
+        return { contents, loader: "ts" };
+      });
+    },
+  };
+  return { plugin, patched: () => [...patched] };
 }
 
 /** 書き換えたファイルの数を数えられるようにして返す（build-report に残す）。 */

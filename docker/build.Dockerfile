@@ -1,9 +1,9 @@
 # 単一バイナリ・mcpb のビルド用イメージ（非公式 MCP サーバ）。ローカルと release.yaml で共通。
-# ホストに bun / node / zip / llvm を入れず、すべてこの中で実行する。ビルドコンテキストはリポジトリのルート。
+# ホストに bun / node / zip を入れず、すべてこの中で実行する。ビルドコンテキストはリポジトリのルート。
 # 除外は docker/build.Dockerfile.dockerignore。
 #
 #   deps      : ルートの package-lock.json どおりに npm ci（ワークスペースの依存。canvas は取り除く）
-#   toolchain : bun（1.4.2 固定）・zip・llvm-lipo と、依存・ソース
+#   toolchain : bun（1.4.2 固定）・zip・Bun のライセンス（版とチェックサムを固定）と、依存・ソース
 #   build     : tools/build/src/cli.ts で全ターゲットをクロスコンパイルし、/work/dist に出力する。
 #               検証用の CMap プローブ（tools/build/src/probe/cmap-probe.ts）を /work/probe に出力する
 #   artifacts : /work の中身だけ（--output type=local で取り出す）
@@ -20,7 +20,7 @@
 #   TOOLS     mcpb の tools に載せる JSON（既定: tools/build/fixtures/poc-tools.json）
 #   VERSION   semver（v を付けない。既定 0.0.0-dev）
 #   TARGETS   カンマ区切りの出力（空なら既定の 4 つ）
-#   BUILD_ARGS  cli.ts に足す引数（例: "--baseline"、"--darwin launcher"）
+#   BUILD_ARGS  cli.ts に足す引数（例: "--baseline"）
 ARG BUN_VERSION=1.4.2
 
 # ---- 依存（lockfile どおり） ----
@@ -47,11 +47,11 @@ RUN find . -path '*/node_modules/@napi-rs/canvas*' -prune -exec rm -rf {} +
 # ---- ツールチェイン ----
 FROM --platform=$BUILDPLATFORM oven/bun:${BUN_VERSION}-debian AS toolchain
 RUN apt-get update \
- && apt-get install -y --no-install-recommends zip llvm \
- && rm -rf /var/lib/apt/lists/* \
- && lipo="$(ls /usr/lib/llvm-*/bin/llvm-lipo | sort -V | tail -1)" \
- && ln -sf "$lipo" /usr/local/bin/llvm-lipo \
- && llvm-lipo -version
+ && apt-get install -y --no-install-recommends zip \
+ && rm -rf /var/lib/apt/lists/*
+# 単一バイナリに同梱する Bun ランタイムのライセンス（bun-v1.4.2 の LICENSE.md。THIRD_PARTY_NOTICES.txt に載せる）
+ADD --checksum=sha256:b9caf52728691b4057e371232c221a132883198be2f3d2ddf92c90404c984b1a \
+    https://raw.githubusercontent.com/oven-sh/bun/bun-v1.4.2/LICENSE.md /opt/licenses/bun/LICENSE.md
 WORKDIR /repo
 COPY --from=deps /repo/ ./
 COPY . .
@@ -69,9 +69,11 @@ ARG TARGETS=
 ARG BUILD_ARGS=
 RUN set -eu; \
     t=""; [ -n "$TARGETS" ] && t="--targets $TARGETS"; \
-    bun run tools/build/src/cli.ts --entry "$ENTRY" --out /work/dist --version "$VERSION" --tools "$TOOLS" $t $BUILD_ARGS --keep-slices; \
+    lic=/opt/licenses/bun/LICENSE.md; \
+    bun run tools/build/src/cli.ts --entry "$ENTRY" --out /work/dist --version "$VERSION" --tools "$TOOLS" \
+      --bun-license "$lic" $t $BUILD_ARGS; \
     bun run tools/build/src/cli.ts --entry tools/build/src/probe/cmap-probe.ts --out /work/probe --version "$VERSION" \
-      --tools "$TOOLS" --name csrc-cmap-probe --no-mcpb $t $BUILD_ARGS; \
+      --tools "$TOOLS" --bun-license "$lic" --name csrc-cmap-probe --no-mcpb $t $BUILD_ARGS; \
     cp "$TOOLS" /work/tools.json; \
     mkdir -p /work/scripts && cp tools/build/scripts/*.sh /work/scripts/; \
     cd /work/dist && sha256sum -c SHA256SUMS; \
@@ -93,7 +95,7 @@ RUN set -eu; \
       mcpb unpack "$f" "$d"; \
       mcpb validate "$d/manifest.json"; \
       mcpb info "$f"; \
-      ls -la "$d/server"; \
+      ls -la "$d" "$d/server"; \
     done
 
 # ---- 実行確認用: bun / node を含まない素の Debian ----

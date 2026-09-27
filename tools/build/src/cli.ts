@@ -2,20 +2,22 @@
  * 単一バイナリと mcpb（binary 型）のビルド。Bun で実行する。
  *
  *   bun run tools/build/src/cli.ts --entry <file> --out <dir> --version <x.y.z> --tools <tools.json> \
- *     [--targets a,b] [--baseline] [--name <名前>] [--no-mcpb] [--darwin universal|launcher] [--keep-slices]
+ *     --bun-license <LICENSE.md> [--targets a,b] [--baseline] [--name <名前>] [--no-mcpb] [--license <LICENSE>]
  *
  * 出力:
- *   <out>/bin/<名前>-<出力>[.exe]      単体バイナリ（既定: darwin-universal・windows-x64・linux-x64・linux-arm64）
- *   <out>/mcpb/<名前>-<version>.mcpb  mcpb（全 OS 共通の 1 つ。macOS のユニバーサル + Windows x64）
- *   <out>/SHA256SUMS                  上の 2 種類のハッシュ（sha256sum -c で検査できる）
- *   <out>/build-report.json           サイズ・埋め込んだ資産・書き換え・lipo の記録
- *   <out>/slices/                     --keep-slices のときだけ。lipo 前の 2 つと launch.sh（代替の検証用）
+ *   <out>/bin/<名前>-<target>[.exe]    単体バイナリ（既定: darwin-arm64・windows-x64・linux-x64・linux-arm64）
+ *   <out>/mcpb/<名前>-<version>.mcpb  mcpb（全 OS 共通の 1 つ。darwin-arm64 + windows-x64）
+ *   <out>/THIRD_PARTY_NOTICES.txt     同梱物のライセンス本文と著作権表示（mcpb のルートにも入れる）
+ *   <out>/LICENSE                     リポジトリのライセンス（mcpb のルートにも入れる。無ければ警告して続ける）
+ *   <out>/SHA256SUMS                  上のすべてのハッシュ（sha256sum -c で検査できる）
+ *   <out>/build-report.json           サイズ・埋め込んだ資産・書き換え・ライセンス表記の記録
  *
  * エントリの前に、pdfjs の CMap・標準フォントを埋め込んで setPdfAssets へ渡す起動前処理を差し込む。
  * エントリ自身は何も import しなくてよい（生成した入口が「起動前処理 → エントリ」の順に import する）。
  * そのためエントリは import.meta.main で起動を条件付けず、読み込まれたら起動すること。
  *
- * macOS のユニバーサル化には llvm-lipo を使う（環境変数 CSRC_LIPO で差し替え可）。zip も要る。
+ * packages/server/src/version.ts の VERSION は --version の値に差し替える（plugins.ts。ソースは変えない）。
+ * macOS 用（darwin-arm64）は Bun が付ける ad-hoc 署名のまま（公証なし）。mcpb の組み立てに zip が要る。
  */
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -35,18 +37,15 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { parseCliArgs, type CliOptions } from "./args.ts";
 import { collectPdfAssets, renderPreamble, summarizePdfAssets } from "./assets.ts";
-import { buildManifest, mcpbLayout, parseToolsJson, renderDarwinLauncher, type ToolEntry } from "./manifest.ts";
-import { EXTERNALS, playwrightCorePlugin } from "./plugins.ts";
-import {
-  formatSha256Sums,
-  mcpbFileName,
-  parseLipoArchs,
-  type BuildReport,
-  type BuiltFile,
-  type CompileReport,
-  type OutputReport,
-} from "./report.ts";
-import { binaryFileName, compileTargetsOf, resolveOutputs, type CompileTarget } from "./targets.ts";
+import { buildManifest, mcpbLayout, parseToolsJson, type ToolEntry } from "./manifest.ts";
+import { collectNotices, pdfjsAssetLicenseSections, renderNotices, type NoticeSection } from "./notices.ts";
+import { EXTERNALS, playwrightCorePlugin, serverVersionPlugin } from "./plugins.ts";
+import { formatSha256Sums, mcpbFileName, type BuildReport, type BuiltFile, type TargetReport } from "./report.ts";
+import { binaryFileName, resolveTargets, type Target } from "./targets.ts";
+
+/** 出力のルートと mcpb のルートに置くファイル */
+const NOTICES = "THIRD_PARTY_NOTICES.txt";
+const LICENSE = "LICENSE";
 
 function sha256(file: string): string {
   return createHash("sha256").update(readFileSync(file)).digest("hex");
@@ -69,19 +68,26 @@ function prepareEntry(entry: string, genDir: string) {
   const wrapper = path.join(genDir, "entry.ts");
   // ESM は import を書いた順に評価するので、エントリより先に setPdfAssets が済む
   writeFileSync(wrapper, `import ${JSON.stringify(preamble)};\nimport ${JSON.stringify(entry)};\n`);
-  return { wrapper, assets: summarizePdfAssets(files) };
+  return { wrapper, assets: summarizePdfAssets(files), pdfjsDir };
 }
 
-async function compile(entry: string, target: CompileTarget, outfile: string, plugin: ReturnType<typeof playwrightCorePlugin>["plugin"]) {
+/** コンパイルし、バンドルの入力ファイル（絶対パス）を返す。 */
+async function compile(
+  entry: string,
+  target: Target,
+  outfile: string,
+  plugins: Bun.BunPlugin[],
+): Promise<string[]> {
   let result: Awaited<ReturnType<typeof Bun.build>>;
   try {
     result = await Bun.build({
-    entrypoints: [entry],
-    compile: { target: target.bunTarget as Bun.Build.CompileTarget, outfile },
-    minify: true,
-    sourcemap: "none",
-    plugins: [plugin],
-    external: [...EXTERNALS],
+      entrypoints: [entry],
+      compile: { target: target.bunTarget as Bun.Build.CompileTarget, outfile },
+      minify: true,
+      sourcemap: "none",
+      plugins,
+      external: [...EXTERNALS],
+      metafile: true,
     });
   } catch (error) {
     // Bun.build は失敗時に AggregateError を投げる（中身がバンドラのメッセージ）
@@ -95,34 +101,46 @@ async function compile(entry: string, target: CompileTarget, outfile: string, pl
   }
   if (!existsSync(outfile)) throw new Error(`出力がありません: ${outfile}`);
   if (target.exe === "") chmodSync(outfile, 0o755);
+  const inputs = Object.keys(result.metafile?.inputs ?? {});
+  if (inputs.length === 0) throw new Error(`metafile に入力がありません（${target.key}）。ライセンス表記を作れません`);
+  return inputs.map((p) => path.resolve(process.cwd(), p.replace(/^file:/, "")));
 }
 
-function run(command: string, args: string[]): string {
-  const r = spawnSync(command, args, { encoding: "utf8" });
-  if (r.error !== undefined) throw new Error(`${command} を起動できません: ${r.error.message}`);
-  if (r.status !== 0) throw new Error(`${command} ${args.join(" ")} が失敗しました（${r.status}）\n${r.stderr}`);
-  return r.stdout;
+/** 同梱物のライセンス表記を作る。ライセンスの見つからないパッケージがあれば一覧を出して止める。 */
+function buildNotices(inputs: Iterable<string>, pdfjsDir: string, bunLicense: string): { text: string; sections: NoticeSection[] } {
+  const { sections, missing } = collectNotices([...inputs]);
+  if (missing.length > 0) {
+    throw new Error(`ライセンスファイルの見つからない同梱パッケージがあります（${missing.length} 件）:\n- ${missing.join("\n- ")}`);
+  }
+  if (!existsSync(bunLicense)) throw new Error(`Bun のライセンスがありません: ${bunLicense}`);
+  const bun: NoticeSection = {
+    title: `Bun ${Bun.version}（単一バイナリに同梱するランタイム）`,
+    license: "MIT（静的にリンクしたライブラリは各ライセンス）",
+    files: [{ name: path.basename(bunLicense), text: readFileSync(bunLicense, "utf8") }],
+  };
+  const all = [bun, ...sections, ...pdfjsAssetLicenseSections(pdfjsDir)];
+  return { text: renderNotices(all), sections: all };
 }
 
-/** arm64 と x64 の Mach-O を 1 つにまとめ、両方の slice があることを確かめる。 */
-function lipo(parts: string[], outfile: string): string[] {
-  const cmd = process.env.CSRC_LIPO ?? "llvm-lipo";
-  rmSync(outfile, { force: true });
-  run(cmd, ["-create", ...parts, "-output", outfile]);
-  chmodSync(outfile, 0o755);
-  const archs = parseLipoArchs(run(cmd, ["-archs", outfile]));
-  for (const a of ["arm64", "x86_64"]) if (!archs.includes(a)) throw new Error(`lipo の結果に ${a} がありません: ${archs.join(" ")}`);
-  return archs;
+/** mcpb のルートに置くファイル（manifest.json 以外） */
+interface RootFile {
+  name: string;
+  file: string;
 }
 
-function writeMcpb(opts: CliOptions, tools: readonly ToolEntry[], binaries: Map<string, string>, mcpbDir: string) {
-  const manifest = buildManifest({ name: opts.name, version: opts.version, tools, darwin: opts.darwin });
-  const layout = mcpbLayout(opts.name, opts.darwin);
+function writeMcpb(
+  opts: CliOptions,
+  tools: readonly ToolEntry[],
+  binaries: Map<string, string>,
+  rootFiles: readonly RootFile[],
+  mcpbDir: string,
+) {
+  const manifest = buildManifest({ name: opts.name, version: opts.version, tools });
   const stage = mkdtempSync(path.join(tmpdir(), "csrc-mcpb-"));
   try {
     mkdirSync(path.join(stage, "server"));
     const contents: { path: string; from: string; bytes: number }[] = [];
-    for (const entry of layout.entries) {
+    for (const entry of mcpbLayout(opts.name)) {
       const src = binaries.get(entry.from);
       if (src === undefined) throw new Error(`mcpb に要る ${entry.from} がビルドされていません`);
       const dest = path.join(stage, entry.path);
@@ -130,17 +148,18 @@ function writeMcpb(opts: CliOptions, tools: readonly ToolEntry[], binaries: Map<
       chmodSync(dest, entry.executable ? 0o755 : 0o644);
       contents.push({ path: entry.path, from: entry.from, bytes: statSync(dest).size });
     }
-    if (layout.launcher !== undefined) {
-      const dest = path.join(stage, layout.launcher);
-      writeFileSync(dest, renderDarwinLauncher(opts.name));
-      chmodSync(dest, 0o755);
-      contents.push({ path: layout.launcher, from: "launch.sh", bytes: statSync(dest).size });
+    for (const r of rootFiles) {
+      copyFileSync(r.file, path.join(stage, r.name));
+      contents.push({ path: r.name, from: r.name, bytes: statSync(r.file).size });
     }
     writeFileSync(path.join(stage, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
     const file = path.join(mcpbDir, mcpbFileName(opts.name, opts.version));
     rmSync(file, { force: true });
     // -D: ディレクトリの項目を入れない（mcpb の公式 CLI の unpack は "server/" の項目があると EISDIR で失敗する）
-    const zip = spawnSync("zip", ["-q", "-r", "-X", "-D", file, "manifest.json", "server"], { cwd: stage, stdio: "inherit" });
+    const zip = spawnSync("zip", ["-q", "-r", "-X", "-D", file, "manifest.json", ...rootFiles.map((r) => r.name), "server"], {
+      cwd: stage,
+      stdio: "inherit",
+    });
     if (zip.status !== 0) throw new Error("zip 失敗。zip コマンドが要ります");
     return { file, contents };
   } finally {
@@ -148,13 +167,11 @@ function writeMcpb(opts: CliOptions, tools: readonly ToolEntry[], binaries: Map<
   }
 }
 
-const LAUNCHER_OUTPUT_KEYS = ["darwin-arm64", "darwin-x64", "windows-x64", "linux-x64", "linux-arm64"];
-
 async function main(): Promise<void> {
   const opts = parseCliArgs(process.argv.slice(2));
-  const outputs = resolveOutputs(opts.targets ?? (opts.darwin === "launcher" ? LAUNCHER_OUTPUT_KEYS : undefined), opts.baseline);
+  const targets = resolveTargets(opts.targets, opts.baseline);
   if (opts.mcpb) {
-    const missing = mcpbLayout(opts.name, opts.darwin).entries.filter((e) => !outputs.some((o) => o.key === e.from));
+    const missing = mcpbLayout(opts.name).filter((e) => !targets.some((t) => t.key === e.from));
     if (missing.length > 0) {
       throw new Error(`mcpb には ${missing.map((e) => e.from).join(", ")} が要ります（--targets に足すか、--no-mcpb で省略）`);
     }
@@ -168,72 +185,58 @@ async function main(): Promise<void> {
 
   const genDir = mkdtempSync(path.join(tmpdir(), "csrc-build-"));
   try {
-    const { wrapper, assets } = prepareEntry(entry, genDir);
+    const { wrapper, assets, pdfjsDir } = prepareEntry(entry, genDir);
     console.log(
       `pdf assets: cmaps ${assets.cMaps.count} files (${assets.cMaps.bytes} B), standard fonts ${assets.standardFonts.count} files (${assets.standardFonts.bytes} B)`,
     );
     const mb = (n: number) => `${(n / 1e6).toFixed(1)} MB`;
     const pw = playwrightCorePlugin();
+    // packages/server の VERSION（serverInfo.version と User-Agent）を --version にする
+    const ver = serverVersionPlugin(opts.version);
 
-    // 1. コンパイル（1 回のコンパイルを複数の出力で使い回す）
-    const compiled = new Map<string, string>();
-    const compiles: CompileReport[] = [];
-    mkdirSync(path.join(genDir, "compile"));
-    for (const target of compileTargetsOf(outputs)) {
-      const file = path.join(genDir, "compile", binaryFileName(opts.name, target));
-      const t0 = Date.now();
-      await compile(wrapper, target, file, pw.plugin);
-      compiled.set(target.key, file);
-      compiles.push({ target: target.key, bunTarget: target.bunTarget, compileMs: Date.now() - t0, bytes: statSync(file).size });
-      console.log(`compiled ${target.key}: ${mb(statSync(file).size)}`);
-    }
-
-    // 2. 出力（darwin-universal は lipo でまとめる）
+    // 1. コンパイル
     const binaries = new Map<string, string>();
-    const outputReports: OutputReport[] = [];
-    for (const o of outputs) {
-      const file = path.join(binDir, binaryFileName(opts.name, o));
-      const parts = o.parts.map((p) => compiled.get(p.key)!);
-      let archs: string[] | undefined;
-      if (parts.length === 1) {
-        copyFileSync(parts[0]!, file);
-        if (o.exe === "") chmodSync(file, 0o755);
-      } else {
-        archs = lipo(parts, file);
-      }
-      binaries.set(o.key, file);
-      const report: OutputReport = { output: o.key, parts: o.parts.map((p) => p.key), binary: built(out, file) };
-      if (archs !== undefined) report.archs = archs;
-      outputReports.push(report);
-      console.log(`output ${o.key}: ${mb(report.binary.bytes)}${archs ? ` (${archs.join(" ")})` : ""}`);
+    const reports: TargetReport[] = [];
+    const inputs = new Set<string>();
+    for (const target of targets) {
+      const file = path.join(binDir, binaryFileName(opts.name, target));
+      const t0 = Date.now();
+      for (const p of await compile(wrapper, target, file, [pw.plugin, ver.plugin])) inputs.add(p);
+      binaries.set(target.key, file);
+      const report: TargetReport = { target: target.key, bunTarget: target.bunTarget, compileMs: Date.now() - t0, binary: built(out, file) };
+      reports.push(report);
+      console.log(`built ${target.key}: ${mb(report.binary.bytes)}`);
     }
 
-    // 3. 代替（起動スクリプト）の検証用に、lipo 前の 2 つを残す
-    if (opts.keepSlices) {
-      const slices = path.join(out, "slices");
-      mkdirSync(slices, { recursive: true });
-      for (const [key, suffix] of [["darwin-arm64", "arm64"], ["darwin-x64", "x64"]] as const) {
-        const src = compiled.get(key);
-        if (src === undefined) continue;
-        const dest = path.join(slices, `${opts.name}-${suffix}`);
-        copyFileSync(src, dest);
-        chmodSync(dest, 0o755);
-      }
-      writeFileSync(path.join(slices, "launch.sh"), renderDarwinLauncher(opts.name));
-      chmodSync(path.join(slices, "launch.sh"), 0o755);
+    // 2. 同梱物のライセンス表記と、リポジトリの LICENSE
+    const noticesFile = path.join(out, NOTICES);
+    const notices = buildNotices(inputs, pdfjsDir, opts.bunLicense);
+    writeFileSync(noticesFile, notices.text);
+    console.log(`${NOTICES}: ${notices.sections.length} sections, ${statSync(noticesFile).size} B`);
+    const rootFiles: RootFile[] = [{ name: NOTICES, file: noticesFile }];
+    let license: BuiltFile | null = null;
+    const licenseSrc = path.resolve(opts.license);
+    if (existsSync(licenseSrc)) {
+      const dest = path.join(out, LICENSE);
+      copyFileSync(licenseSrc, dest);
+      rootFiles.push({ name: LICENSE, file: dest });
+      license = built(out, dest);
+    } else {
+      console.warn(`warning: リポジトリの LICENSE がありません（${licenseSrc}）。mcpb と Release に入れずに続けます`);
     }
 
-    // 4. mcpb（全 OS 共通の 1 つ）
+    // 3. mcpb（全 OS 共通の 1 つ）
     let mcpb: BuildReport["mcpb"] = null;
     if (opts.mcpb) {
       const mcpbDir = path.join(out, "mcpb");
       mkdirSync(mcpbDir, { recursive: true });
-      const { file, contents } = writeMcpb(opts, tools, binaries, mcpbDir);
+      const { file, contents } = writeMcpb(opts, tools, binaries, rootFiles, mcpbDir);
       mcpb = { ...built(out, file), contents };
       console.log(`mcpb ${path.basename(file)}: ${mb(mcpb.bytes)}`);
     }
 
-    const sums = [...outputReports.map((r) => r.binary), ...(mcpb ? [mcpb] : [])];
+    const noticesBuilt = built(out, noticesFile);
+    const sums = [...reports.map((r) => r.binary), ...(mcpb ? [mcpb] : []), noticesBuilt, ...(license ? [license] : [])];
     writeFileSync(path.join(out, "SHA256SUMS"), formatSha256Sums(sums));
     const rel = (p: string) => path.relative(process.cwd(), p).replace(/\\/g, "/");
     const report: BuildReport = {
@@ -241,12 +244,14 @@ async function main(): Promise<void> {
       version: opts.version,
       bun: Bun.version,
       entry: rel(entry),
-      darwin: opts.darwin,
+      darwinSigning: "bun-adhoc",
       playwrightCorePatched: [...new Set(pw.patched().map(rel))],
+      versionPatched: [...new Set(ver.patched().map(rel))],
       pdfAssets: assets,
-      compiles,
-      outputs: outputReports,
+      targets: reports,
       mcpb,
+      notices: { ...noticesBuilt, sections: notices.sections.map((x) => x.title) },
+      license,
     };
     writeFileSync(path.join(out, "build-report.json"), `${JSON.stringify(report, null, 2)}\n`);
   } finally {

@@ -6,6 +6,7 @@
 #
 # tools.json に書いたツール名が、すべて tools/list の応答に含まれていれば成功（終了コード 0）。
 # 環境変数: PROBE_TIMEOUT（秒。既定 30）
+#           PROBE_EXPECT_VERSION（指定すると serverInfo.version がこの版であることも確かめる）
 set -u
 
 BIN=${1:?usage: mcp-probe.sh <binary> <tools.json>}
@@ -82,6 +83,12 @@ if [ "$count" -eq 0 ]; then
 fi
 
 server=$(grep -o '"serverInfo":{[^}]*}' "$OUT" | head -1)
+if [ -n "${PROBE_EXPECT_VERSION:-}" ]; then
+  if ! printf '%s' "$server" | grep -q "\"version\":\"$PROBE_EXPECT_VERSION\""; then
+    echo "probe: serverInfo.version がビルドの版（$PROBE_EXPECT_VERSION）と違います: $server" >&2
+    status=1
+  fi
+fi
 echo "probe: binary=$(basename "$BIN") expected_tools=$count elapsed_s=$elapsed status=$status $server"
 if [ "$status" -ne 0 ]; then
   echo "--- stdout" >&2
