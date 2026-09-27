@@ -138,3 +138,16 @@ $RECYCLE.BIN/
 
 poc/node_modules/
 poc/out/
+
+
+# ============================== Node（npm ワークスペース） ============================== #
+
+
+node_modules/
+dist/
+out/
+coverage/
+*.tsbuildinfo
+.vitest/
+npm-debug.log*
+.npm/

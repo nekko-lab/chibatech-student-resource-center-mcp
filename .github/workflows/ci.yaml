@@ -1,0 +1,41 @@
+# 全ワークスペースの型検査とテスト。
+#
+# ルートのテストイメージ（docker/test.Dockerfile）を作り、コンテナの中で npm run check を実行する。
+# 手元の scripts/test.sh と同じ手順なので、ローカルで通れば CI でも通る。
+#
+# 大学のポリシーにより、CI からはサイトにアクセスしない。
+# LIVE テスト（packages/portal の実サイト確認）は LIVE=0 を明示して必ずスキップさせる。
+# poc/ だけの変更は bun-poc.yaml が扱うので、ここでは走らせない。
+name: ci
+
+on:
+  pull_request:
+    branches: [dev, main]
+    paths-ignore:
+      - 'poc/**'
+  push:
+    branches: [dev]
+    paths-ignore:
+      - 'poc/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: typecheck and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Typecheck and test (docker)
+        env:
+          LIVE: '0'
+          CSRC_TEST_IMAGE: csrc-ci-test
+        run: ./scripts/test.sh
