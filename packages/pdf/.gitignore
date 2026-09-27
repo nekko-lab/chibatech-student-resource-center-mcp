@@ -1,0 +1,7 @@
+node_modules/
+dist/
+coverage/
+# ローカル確認で取得した PDF やキャッシュはコミットしない（大学のポリシー）
+*.pdf
+.cache/
+pdfx_*

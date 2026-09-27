@@ -1,0 +1,27 @@
+{
+  "name": "@chibatech-src/pdf",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PDF fetch, text extraction and page-range helpers for the unofficial Chiba Tech student resource center MCP server",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "check": "tsc --noEmit && vitest run"
+  },
+  "dependencies": {
+    "pdfjs-dist": "6.3.289"
+  },
+  "devDependencies": {
+    "@pdf-lib/fontkit": "1.1.1",
+    "@types/node": "22.20.4",
+    "pdf-lib": "1.17.1",
+    "typescript": "5.9.3",
+    "vitest": "5.0.2"
+  }
+}
