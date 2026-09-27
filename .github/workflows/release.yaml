@@ -6,7 +6,7 @@
 #           埋め込んだ CMap が単一バイナリの中から読めることも、合成 PDF で確かめる。
 #           macOS はユニバーサルバイナリ 1 つを arm64 と x64 の両方のランナーで起動し、lipo と codesign の結果を残す
 #   release タグ（v*）の push、または workflow_dispatch で create_release を選んだときだけ、
-#           gh release create でバイナリ・mcpb・SHA256SUMS を添付する
+#           gh release create でバイナリ・mcpb・SHA256SUMS を添付する（pull_request では作らない）
 #
 # サイトにはアクセスしない（ツールを呼ばない。コンテナは --network none）。
 # サイトのコンテンツは artifact にも Release にも入れない。Release の説明にサイトへの直リンクを貼らない。
@@ -18,6 +18,15 @@ name: release
 on:
   push:
     tags: ['v*']
+  # ビルド基盤を変えた PR では build と smoke だけを走らせる（Release は作らない）。
+  # workflow_dispatch は既定ブランチに載るまで起動できないため、その前の確認にも使う。
+  pull_request:
+    branches: [dev, main]
+    paths:
+      - 'tools/build/**'
+      - 'docker/build.Dockerfile'
+      - 'docker/build.Dockerfile.dockerignore'
+      - '.github/workflows/release.yaml'
   workflow_dispatch:
     inputs:
       entry:
