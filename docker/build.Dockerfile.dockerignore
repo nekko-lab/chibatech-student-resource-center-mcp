@@ -1,10 +1,11 @@
 # docker/build.Dockerfile 専用の除外（ビルドコンテキストはリポジトリのルート）
-# poc/ は検証用のエントリ（poc/src/launcher.ts）に使うので含める。
+# poc/ は入口にしない（本番の入口は packages/server/src/main.ts。PoC は bun-poc.yaml で扱う）ので含めない。
 .git
 .github
 .claude
 .devcontainer
 container
+poc
 **/node_modules
 **/dist
 **/coverage

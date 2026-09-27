@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   USER_CONFIG_ENV,
@@ -192,10 +191,5 @@ describe("parseToolsJson", () => {
     expect(() => parseToolsJson("{}")).toThrow(/配列/);
     expect(() => parseToolsJson('[{"name":"a"}]')).toThrow(/description/);
     expect(() => parseToolsJson("not json")).toThrow();
-  });
-
-  it("検証用の PoC のツール一覧（fixtures/poc-tools.json）を読める", () => {
-    const text = readFileSync(new URL("../fixtures/poc-tools.json", import.meta.url), "utf8");
-    expect(parseToolsJson(text).map((t) => t.name)).toEqual(["portal_search", "portal_list_sections", "document_read_text"]);
   });
 });

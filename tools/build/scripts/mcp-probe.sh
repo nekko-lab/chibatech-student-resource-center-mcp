@@ -4,7 +4,7 @@
 #
 #   sh tools/build/scripts/mcp-probe.sh <binary> <tools.json>
 #
-# tools.json に書いたツール名が、すべて tools/list の応答に含まれていれば成功（終了コード 0）。
+# tools.json に書いたツール名が、すべて tools/list の応答に含まれ、本数も一致すれば成功（終了コード 0）。
 # 環境変数: PROBE_TIMEOUT（秒。既定 30）
 #           PROBE_EXPECT_VERSION（指定すると serverInfo.version がこの版であることも確かめる）
 set -u
@@ -81,6 +81,13 @@ if [ "$count" -eq 0 ]; then
   echo "probe: $TOOLS からツール名を読めません" >&2
   status=1
 fi
+# tools/list の本数（応答の tools[] の各要素は {"name":"…" で始まる）が tools.json と一致すること。
+# 上の照合は「tools.json ⊆ tools/list」なので、manifest に載っていないツールをサーバが出していないかをここで見る
+listed=$(grep -E '"id":2[,}]' "$OUT" | head -1 | grep -o '{"name":"[^"]*"' | wc -l | tr -d ' ')
+if [ "$listed" -ne "$count" ]; then
+  echo "probe: tools/list の本数（$listed）が $TOOLS の本数（$count）と違います" >&2
+  status=1
+fi
 
 server=$(grep -o '"serverInfo":{[^}]*}' "$OUT" | head -1)
 if [ -n "${PROBE_EXPECT_VERSION:-}" ]; then
@@ -89,7 +96,7 @@ if [ -n "${PROBE_EXPECT_VERSION:-}" ]; then
     status=1
   fi
 fi
-echo "probe: binary=$(basename "$BIN") expected_tools=$count elapsed_s=$elapsed status=$status $server"
+echo "probe: binary=$(basename "$BIN") expected_tools=$count listed_tools=$listed elapsed_s=$elapsed status=$status $server"
 if [ "$status" -ne 0 ]; then
   echo "--- stdout" >&2
   head -c 4000 "$OUT" >&2
