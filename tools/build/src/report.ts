@@ -47,6 +47,8 @@ export interface BuildReport {
   versionPatched: string[];
   pdfAssets: PdfAssetSummary;
   targets: TargetReport[];
+  /** mcpb の tools に載せた一覧（<out>/tools.json）。source はサーバの toolDefinitions() か --tools のパス。mcpb を作らなければ null */
+  tools: { path: string; source: string; count: number; names: string[] } | null;
   mcpb: (BuiltFile & { contents: { path: string; from: string; bytes: number }[] }) | null;
   /** THIRD_PARTY_NOTICES.txt と、載せた節の見出し */
   notices: BuiltFile & { sections: string[] };

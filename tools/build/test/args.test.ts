@@ -4,7 +4,7 @@ import { formatSha256Sums, mcpbFileName } from "../src/report.ts";
 
 const base = [
   "--entry",
-  "poc/src/launcher.ts",
+  "packages/server/src/main.ts",
   "--out",
   "out",
   "--version",
@@ -18,7 +18,7 @@ const base = [
 describe("parseCliArgs", () => {
   it("必須の 5 つと既定値", () => {
     expect(parseCliArgs(base)).toEqual({
-      entry: "poc/src/launcher.ts",
+      entry: "packages/server/src/main.ts",
       out: "out",
       version: "1.2.3",
       tools: "tools.json",
@@ -40,6 +40,13 @@ describe("parseCliArgs", () => {
     expect(got.license).toBe("/r/LICENSE");
   });
 
+  it("--tools は省ける（省くとサーバの toolDefinitions() から作る）。空の値は拒む", () => {
+    const without = base.filter((_, i) => base[i] !== "--tools" && base[i - 1] !== "--tools");
+    expect(without).not.toContain("tools.json");
+    expect(parseCliArgs(without).tools).toBeUndefined();
+    expect(() => parseCliArgs([...without, "--tools="])).toThrow(/--tools/);
+  });
+
   it("--key=value の形も読む", () => {
     expect(parseCliArgs(["--entry=a.ts", "--out=o", "--version=0.0.0-dev.1", "--tools=t.json", "--bun-license=l"]).version).toBe(
       "0.0.0-dev.1",
@@ -49,6 +56,7 @@ describe("parseCliArgs", () => {
   it("欠けた必須引数・値の無い引数・未知の引数・不正な値は拒む", () => {
     expect(() => parseCliArgs(base.slice(2))).toThrow(/--entry/);
     expect(() => parseCliArgs(base.slice(0, 8))).toThrow(/--bun-license/);
+    expect(() => parseCliArgs(base.slice(0, 4))).toThrow(/--version/);
     expect(() => parseCliArgs([...base, "--targets"])).toThrow(/--targets/);
     expect(() => parseCliArgs([...base, "--fast"])).toThrow(/--fast/);
     expect(() => parseCliArgs([...base, "--darwin", "universal"])).toThrow(/--darwin/);

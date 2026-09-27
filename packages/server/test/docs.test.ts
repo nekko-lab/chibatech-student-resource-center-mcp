@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { MemoryPdfCache } from "@chibatech-src/pdf";
 import { PortalError } from "@chibatech-src/portal";
 import { afterEach, describe, expect, it } from "vitest";
-import { DocumentService } from "../src/docs.ts";
+import { DocumentService, sameVersion } from "../src/docs.ts";
 import { fakeFetcher, makePdf } from "./helpers/pdf.ts";
 
 const BASE = "https://portal.example.test/portal/";
@@ -92,6 +92,62 @@ describe("DocumentService.readText", () => {
     const r = await svc.readText(PDF, { from: 2, to: 2 });
     expect(f.requests[1]!.headers["If-Modified-Since"]).toBe(LM);
     expect(r.pages[0]!.text).toContain("page 2");
+  });
+});
+
+describe("DocumentService.readAllText", () => {
+  it("全ページの本文と Last-Modified を返す。版が同じなら本文を取り出さず unchanged を返す", async () => {
+    const { svc, f } = service({ maxPages: 2 });
+    const r = await svc.readAllText(`${PDF}#page=3`);
+    expect(r).toMatchObject({ url: PDF, title: "life.pdf", unchanged: false, lastModified: LM, etag: null, pageCount: 12 });
+    if (r.unchanged) return;
+    expect(r.pages.map((p) => p.page)).toEqual(Array.from({ length: 12 }, (_, i) => i + 1));
+    expect(r.pages[11]!.text).toContain("page 12");
+
+    const again = await svc.readAllText(PDF, { known: { lastModified: LM, etag: null } });
+    expect(again).toEqual({ url: PDF, title: "life.pdf", unchanged: true, lastModified: LM, etag: null });
+    expect(f.requests[1]!.headers["If-Modified-Since"]).toBe(LM);
+  });
+
+  it("ページ数の上限で切る", async () => {
+    const { svc } = service();
+    const r = await svc.readAllText(PDF, { maxPages: 3 });
+    if (r.unchanged) throw new Error("unchanged ではない");
+    expect(r.pageCount).toBe(12);
+    expect(r.pages.map((p) => p.page)).toEqual([1, 2, 3]);
+  });
+
+  it("ETag を拾い、ETag が変われば作り直す", async () => {
+    let etag = '"v1"';
+    const body = makePdf(["Fictional etag page"]);
+    const svc = new DocumentService({
+      getFetcher: async () => async () => ({ status: 200, headers: { ETag: etag, "content-type": "application/pdf" }, body }),
+      cache: new MemoryPdfCache(),
+      userAgent: "test-agent",
+      baseUrl: BASE,
+      minIntervalMs: 0,
+    });
+    const first = await svc.readAllText(PDF);
+    expect(first).toMatchObject({ etag: '"v1"', lastModified: null, unchanged: false });
+    expect(await svc.readAllText(PDF, { known: { lastModified: null, etag: '"v1"' } })).toMatchObject({ unchanged: true });
+    etag = '"v2"';
+    expect(await svc.readAllText(PDF, { known: { lastModified: null, etag: '"v1"' } })).toMatchObject({ unchanged: false, etag: '"v2"' });
+  });
+
+  it("ポータル以外のホストは取得しない", async () => {
+    const { svc, f } = service();
+    const e = await svc.readAllText("https://drive.example.com/x.pdf").catch((x: unknown) => x);
+    expect((e as PortalError).code).toBe("VALIDATION");
+    expect(f.requests).toHaveLength(0);
+  });
+});
+
+describe("sameVersion", () => {
+  it("ETag が両方にあれば ETag で、無ければ Last-Modified で比べる。どちらも無ければ別の版とみなす", () => {
+    expect(sameVersion({ lastModified: "a", etag: "x" }, { lastModified: "b", etag: "x" })).toBe(true);
+    expect(sameVersion({ lastModified: "a", etag: "x" }, { lastModified: "a", etag: "y" })).toBe(false);
+    expect(sameVersion({ lastModified: "a", etag: null }, { lastModified: "a", etag: "y" })).toBe(true);
+    expect(sameVersion({ lastModified: null, etag: null }, { lastModified: null, etag: null })).toBe(false);
   });
 });
 

@@ -64,7 +64,7 @@ describe("runStdio（子プロセス）", () => {
       expect(m.jsonrpc).toBe("2.0");
     }
     const byId = new Map(lines.map((l) => JSON.parse(l) as { id?: number; result?: { tools?: unknown[]; isError?: boolean } }).map((m) => [m.id, m]));
-    expect(byId.get(2)?.result?.tools?.length).toBe(24);
+    expect(byId.get(2)?.result?.tools?.length).toBe(25);
     expect(byId.get(3)?.result?.isError).toBeUndefined();
     expect(byId.get(4)?.result?.isError).toBeUndefined();
     expect(stderr).toContain("srv-noise console.log");

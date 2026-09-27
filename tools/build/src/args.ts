@@ -7,8 +7,11 @@ export interface CliOptions {
   out: string;
   /** semver（先頭に v を付けない） */
   version: string;
-  /** mcpb の `tools` に載せる JSON（`[{ name, description }]`） */
-  tools: string;
+  /**
+   * mcpb の `tools` に載せる JSON（`[{ name, description }]`）。
+   * 省略時は `@chibatech-src/server` の `toolDefinitions()` から作る（tools-json.ts）。
+   */
+  tools: string | undefined;
   name: string;
   targets: string[] | undefined;
   baseline: boolean;
@@ -21,8 +24,8 @@ export interface CliOptions {
 }
 
 export const USAGE =
-  "bun run tools/build/src/cli.ts --entry <file> --out <dir> --version <x.y.z> --tools <tools.json> --bun-license <LICENSE.md> " +
-  "[--targets a,b] [--baseline] [--name <名前>] [--no-mcpb] [--license <LICENSE>]";
+  "bun run tools/build/src/cli.ts --entry <file> --out <dir> --version <x.y.z> --bun-license <LICENSE.md> " +
+  "[--tools <tools.json>] [--targets a,b] [--baseline] [--name <名前>] [--no-mcpb] [--license <LICENSE>]";
 
 const VALUED = new Set(["entry", "out", "version", "tools", "targets", "name", "bun-license", "license"]);
 const FLAGS = new Set(["baseline", "no-mcpb"]);
@@ -57,7 +60,8 @@ export function parseCliArgs(argv: readonly string[]): CliOptions {
   const entry = required("entry");
   const out = required("out");
   const version = required("version");
-  const tools = required("tools");
+  const toolsText = values.get("tools");
+  if (toolsText !== undefined && toolsText.length === 0) throw new Error(`--tools に値がありません\n${USAGE}`);
   const bunLicense = required("bun-license");
   if (!isSemver(version)) throw new Error(`--version は semver で（v は付けない）: ${version}`);
   const targetsText = values.get("targets");
@@ -65,7 +69,7 @@ export function parseCliArgs(argv: readonly string[]): CliOptions {
     entry,
     out,
     version,
-    tools,
+    tools: toolsText,
     name: values.get("name") ?? DEFAULT_NAME,
     targets:
       targetsText === undefined

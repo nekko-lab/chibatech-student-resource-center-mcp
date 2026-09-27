@@ -31,7 +31,9 @@ import { findContact, findManual, getAbsenceForm } from "./macros/documents.ts";
 import { findDepartmentPage, lookupHandbookTopic, lookupRequirements, type RequirementKind } from "./macros/department.ts";
 import type { MacroEnv } from "./macros/ports.ts";
 import { findClassTeacher, getAcademicCalendar, getBusSchedule } from "./macros/quicklink.ts";
+import { DEFAULT_SEARCH_LIMIT, MAX_SEARCH_LIMIT, searchDocuments } from "./macros/search.ts";
 import { clarify, ok, type Outcome, type Source } from "./respond.ts";
+import type { DocumentIndex } from "./search/indexer.ts";
 import type { Session } from "./session.ts";
 
 export interface ToolContext {
@@ -39,6 +41,8 @@ export interface ToolContext {
   docs: DocumentService;
   env: MacroEnv;
   baseUrl: string;
+  /** search_documents の索引（プロセスに 1 つ） */
+  searchIndex: DocumentIndex;
 }
 
 export interface ToolSpec {
@@ -369,6 +373,28 @@ const macros: ToolSpec[] = [
     description: "（非公式）用件から Q&A とお問合せ先を探し、部署・場所・電話・受付時間を返す。",
     inputSchema: { query: z.string().describe("用件（例: 欠席、成績、Wi-Fi）") },
     run: (ctx, a) => findContact(ctx.env, { query: a.query }),
+  }),
+  tool({
+    name: "search_documents",
+    description:
+      "（非公式）学生資料室の PDF の本文を横断して全文検索し、当たったページの資料名・URL・ページ番号・短い抜粋を返す。" +
+      "学科ページの項目名や申請書・マニュアルの名前に出てこない語（例: GPA、再履修、学割、追試）を調べるときや、" +
+      "lookup_handbook_topic・find_manual などで見つからなかったときに使う。" +
+      "対象は学科（研究科）ページの PDF・クイックリンクの PDF（学年暦など）・各種申請書・マニュアルの PDF。" +
+      "空白で区切った語はすべて含むページを探し、同義語も探す。本文の続きは document_read_text で読む。" +
+      "初回は索引の作成に時間がかかる。status が partial なら、同じ引数でもう一度呼ぶと続きから索引を作る。",
+    inputSchema: {
+      query: z.string().describe("探す語（空白区切りで複数語。例: GPA、再履修 追試）"),
+      ...deptArgs,
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(MAX_SEARCH_LIMIT)
+        .optional()
+        .describe(`返すページ数（既定 ${DEFAULT_SEARCH_LIMIT}、上限 ${MAX_SEARCH_LIMIT}）`),
+    },
+    run: (ctx, a) => searchDocuments(ctx.env, ctx.searchIndex, { ...pick(a), query: a.query, limit: a.limit }),
   }),
 ];
 
