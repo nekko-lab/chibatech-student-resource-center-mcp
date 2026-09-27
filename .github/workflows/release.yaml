@@ -258,15 +258,22 @@ jobs:
         continue-on-error: true
         env:
           SERVER: ${{ steps.prep.outputs.server }}
+        # slice ごとに署名を確かめる。lipo 前の個別版（slices/）も同じ検査にかけ、lipo による変化かどうかを見分ける
         run: |
-          set -x
           file "$SERVER"
-          lipo -archs "$SERVER"
+          echo "lipo -archs: $(lipo -archs "$SERVER")"
+          status=0
           for a in $(lipo -archs "$SERVER"); do
-            codesign -dv --verbose=2 -a "$a" "$SERVER" 2>&1 || true
+            echo "--- $a: codesign -dv"
+            codesign -dv --verbose=2 -a "$a" "$SERVER" 2>&1 | grep -E 'Identifier|Format|flags|Signature|Authority' || true
+            if codesign -v --verbose=2 -a "$a" "$SERVER" 2>&1; then echo "codesign -v ($a): valid"; else echo "codesign -v ($a): INVALID"; status=1; fi
           done
-          codesign -v --verbose=2 "$SERVER"
-          codesign -v --all-architectures --verbose=2 "$SERVER"
+          for f in smoke/slices/"$NAME"-arm64 smoke/slices/"$NAME"-x64; do
+            [ -e "$f" ] || continue
+            if codesign -v --verbose=2 "$f" 2>&1; then echo "before lipo $(basename "$f"): valid"; else echo "before lipo $(basename "$f"): INVALID"; fi
+          done
+          codesign -v --all-architectures --verbose=2 "$SERVER" 2>&1 || true
+          exit "$status"
 
       - name: MCP initialize → tools/list
         env:
