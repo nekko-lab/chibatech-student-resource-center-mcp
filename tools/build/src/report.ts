@@ -6,11 +6,6 @@ export function mcpbFileName(name: string, version: string): string {
   return `${name}-${version}.mcpb`;
 }
 
-/** `llvm-lipo -archs` の出力（空白区切り） */
-export function parseLipoArchs(stdout: string): string[] {
-  return stdout.split(/\s+/).filter((s) => s.length > 0);
-}
-
 export interface SumEntry {
   /** 出力ディレクトリからの相対パス */
   path: string;
@@ -32,19 +27,10 @@ export interface BuiltFile {
   sha256: string;
 }
 
-export interface CompileReport {
+export interface TargetReport {
   target: string;
   bunTarget: string;
   compileMs: number;
-  bytes: number;
-}
-
-export interface OutputReport {
-  output: string;
-  /** 元になったコンパイル（darwin-universal なら 2 つ） */
-  parts: string[];
-  /** lipo でまとめた場合の `llvm-lipo -archs` */
-  archs?: string[];
   binary: BuiltFile;
 }
 
@@ -53,11 +39,17 @@ export interface BuildReport {
   version: string;
   bun: string;
   entry: string;
-  darwin: "universal" | "launcher";
+  /** macOS 用の署名。Bun が付ける ad-hoc 署名のまま（公証なし） */
+  darwinSigning: "bun-adhoc";
   /** playwright-core の書き換えを当てたファイル（エントリが playwright-core を含まなければ空） */
   playwrightCorePatched: string[];
+  /** 版を --version に差し替えたファイル（packages/server/src/version.ts。含まれなければ空） */
+  versionPatched: string[];
   pdfAssets: PdfAssetSummary;
-  compiles: CompileReport[];
-  outputs: OutputReport[];
+  targets: TargetReport[];
   mcpb: (BuiltFile & { contents: { path: string; from: string; bytes: number }[] }) | null;
+  /** THIRD_PARTY_NOTICES.txt と、載せた節の見出し */
+  notices: BuiltFile & { sections: string[] };
+  /** リポジトリの LICENSE（無ければ null。警告して続ける） */
+  license: BuiltFile | null;
 }

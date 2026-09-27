@@ -2,10 +2,9 @@
  * mcpb manifest（binary 型）の組み立てと検証。純関数だけを置く。
  *
  * - mcpb は全 OS 共通の 1 つ。`compatibility.platforms` は darwin と win32（Claude Desktop に Linux 版は無い）。
- * - macOS は `server/<名前>`（arm64 + x64 のユニバーサルバイナリ）を直接起動する。
- *   Windows は `mcp_config.platform_overrides.win32` で `server/<名前>.exe` を起動する。
- * - 代替（darwin: "launcher"）: lipo したバイナリが動かないときは、`/bin/sh server/launch.sh` が
- *   `uname -m` で `server/<名前>-arm64` / `-x64` を選ぶ。
+ * - macOS は `server/<名前>`（Apple シリコン用。Intel Mac は対象外）を直接起動する。
+ *   Windows は `mcp_config.platform_overrides.win32` で `server/<名前>.exe`（x64）を起動する。
+ * - zip のルートには THIRD_PARTY_NOTICES.txt とリポジトリの LICENSE も入れる（cli.ts）。
  * - user_config はすべて任意入力。値は環境変数でサーバに渡す（未入力のときの扱いはサーバ側の責務）。
  */
 export type McpbPlatform = "darwin" | "win32" | "linux";
@@ -42,6 +41,7 @@ export interface McpbManifest {
   homepage?: string;
   support?: string;
   keywords?: string[];
+  license: string;
   server: {
     type: "binary";
     entry_point: string;
@@ -95,83 +95,52 @@ const USER_CONFIG: Record<keyof typeof USER_CONFIG_ENV, UserConfigField> = {
   },
 };
 
-export type DarwinMode = "universal" | "launcher";
-
 export interface ManifestInput {
   name: string;
   version: string;
   tools: readonly ToolEntry[];
-  /** universal: lipo でまとめた 1 つを直接起動 / launcher: uname -m で選ぶ起動スクリプト（lipo が動かないときの代替） */
-  darwin: DarwinMode;
 }
 
 export interface McpbEntry {
   /** mcpb の中のパス */
   path: string;
-  /** 元になる出力（targets.ts の Output.key） */
+  /** 元になるターゲット（targets.ts の Target.key） */
   from: string;
   executable: boolean;
 }
 
-/** mcpb に入れる実行ファイルの配置。launcher は起動スクリプトの置き場所（universal では undefined）。 */
-export function mcpbLayout(name: string, darwin: DarwinMode): { entries: McpbEntry[]; launcher: string | undefined } {
-  const win: McpbEntry = { path: `server/${name}.exe`, from: "windows-x64", executable: false };
-  if (darwin === "universal") {
-    return { entries: [{ path: `server/${name}`, from: "darwin-universal", executable: true }, win], launcher: undefined };
-  }
-  return {
-    entries: [
-      { path: `server/${name}-arm64`, from: "darwin-arm64", executable: true },
-      { path: `server/${name}-x64`, from: "darwin-x64", executable: true },
-      win,
-    ],
-    launcher: LAUNCHER_PATH,
-  };
-}
-
-const LAUNCHER_PATH = "server/launch.sh";
-
-/** 代替の起動スクリプト（macOS 用）。CPU に合うバイナリを exec する。 */
-export function renderDarwinLauncher(name: string): string {
+/** mcpb に入れる実行ファイルの配置（macOS は Apple シリコン用、Windows は x64 用）。 */
+export function mcpbLayout(name: string): McpbEntry[] {
   return [
-    "#!/bin/sh",
-    "# 非公式 MCP サーバの起動スクリプト（macOS）。CPU に合う単一バイナリを選んで起動する。",
-    'dir=$(cd "$(dirname "$0")" && pwd)',
-    'case "$(uname -m)" in',
-    `  arm64) exec "$dir/${name}-arm64" "$@" ;;`,
-    `  x86_64) exec "$dir/${name}-x64" "$@" ;;`,
-    '  *) echo "unsupported CPU: $(uname -m)" >&2; exit 1 ;;',
-    "esac",
-    "",
-  ].join("\n");
+    { path: `server/${name}`, from: "darwin-arm64", executable: true },
+    { path: `server/${name}.exe`, from: "windows-x64", executable: false },
+  ];
 }
 
 export function buildManifest(input: ManifestInput): McpbManifest {
   const env: Record<string, string> = {};
   for (const [key, envName] of Object.entries(USER_CONFIG_ENV)) env[envName] = `\${user_config.${key}}`;
-  const layout = mcpbLayout(input.name, input.darwin);
-  const entryPoint = layout.launcher ?? layout.entries[0]!.path;
-  const darwinCommand =
-    layout.launcher === undefined
-      ? { command: `\${__dirname}/${entryPoint}`, args: [] as string[] }
-      : { command: "/bin/sh", args: [`\${__dirname}/${entryPoint}`] };
+  const entryPoint = mcpbLayout(input.name)[0]!.path;
   const manifest: McpbManifest = {
     manifest_version: MANIFEST_VERSION,
     name: input.name,
     display_name: "千葉工業大学 学生資料室 MCP（非公式）",
     version: input.version,
     description:
-      "非公式ツールです。千葉工業大学および学生資料室の運営者とは関係ありません。学生資料室の資料を探し、PDF の本文を読み取ります。",
+      "非公式ツールです。千葉工業大学および学生資料室の運営者とは関係ありません。学生資料室の資料を探し、PDF の本文を読み取ります。" +
+      "対応: macOS は Apple シリコン（M1 以降）のみ、Windows は x64。",
     author: { name: "nekko-lab", url: "https://github.com/nekko-lab" },
     repository: { type: "git", url: REPOSITORY_URL },
     homepage: REPOSITORY_URL,
     support: `${REPOSITORY_URL}/issues`,
     keywords: ["chibatech", "unofficial", "playwright"],
+    license: "MIT",
     server: {
       type: "binary",
       entry_point: entryPoint,
       mcp_config: {
-        ...darwinCommand,
+        command: `\${__dirname}/${entryPoint}`,
+        args: [],
         env,
         platform_overrides: {
           // 上書きの env の扱い（本体と合成されるか置き換えか）に依らず効くよう、同じ env を写す
@@ -209,13 +178,14 @@ export function validateManifest(m: McpbManifest): string[] {
   if (!isSemver(m.version)) errors.push(`version が semver ではありません: ${m.version}`);
   if (!m.display_name.includes("非公式")) errors.push("display_name に「非公式」を含めること");
   if (!m.description.includes("非公式")) errors.push("description に「非公式」を含めること");
+  if (!m.description.includes("Apple シリコン")) errors.push("description に対応する Mac（Apple シリコンのみ）を書くこと");
+  if (m.license !== "MIT") errors.push(`license は MIT: ${m.license}`);
   if (m.author.name.length === 0) errors.push("author.name が空です");
   if (m.server.type !== "binary") errors.push("server.type は binary");
   const cfg = m.server.mcp_config;
   if (!/^server\/[^/\\]+$/.test(m.server.entry_point)) errors.push(`server.entry_point は server/<名前>: ${m.server.entry_point}`);
   const direct = cfg.command === `\${__dirname}/${m.server.entry_point}` && cfg.args.length === 0;
-  const viaSh = cfg.command === "/bin/sh" && cfg.args.length === 1 && cfg.args[0] === `\${__dirname}/${m.server.entry_point}`;
-  if (!direct && !viaSh) errors.push(`mcp_config.command / args が entry_point を指していません: ${cfg.command} ${JSON.stringify(cfg.args)}`);
+  if (!direct) errors.push(`mcp_config.command / args が entry_point を指していません: ${cfg.command} ${JSON.stringify(cfg.args)}`);
   const overrides = (cfg.platform_overrides ?? {}) as Record<string, McpConfig | undefined>;
   for (const os of Object.keys(overrides)) if (os !== "win32") errors.push(`platform_overrides は win32 だけ: ${os}`);
   const win = overrides.win32;

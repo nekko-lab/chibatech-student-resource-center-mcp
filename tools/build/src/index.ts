@@ -1,15 +1,16 @@
 // @chibatech-src/build: 単一バイナリ・mcpb のビルドの純粋な部分。実行は cli.ts（Bun）から。
+export { DEFAULT_TARGET_KEYS, TARGETS, binaryFileName, resolveTargets, type Target } from "./targets.ts";
 export {
-  COMPILE_TARGETS,
-  DEFAULT_OUTPUT_KEYS,
-  OUTPUTS,
-  binaryFileName,
-  compileTargetsOf,
-  resolveOutputs,
-  type CompileTarget,
-  type Output,
-} from "./targets.ts";
-export { COREBUNDLE_FILTER, EXTERNALS, PLAYWRIGHT_CORE_RULES, applyRules, patchPlaywrightCoreSource, playwrightCorePlugin } from "./plugins.ts";
+  COREBUNDLE_FILTER,
+  EXTERNALS,
+  PLAYWRIGHT_CORE_RULES,
+  SERVER_VERSION_FILTER,
+  applyRules,
+  patchPlaywrightCoreSource,
+  patchServerVersionSource,
+  playwrightCorePlugin,
+  serverVersionPlugin,
+} from "./plugins.ts";
 export {
   REQUIRED_CMAPS,
   collectPdfAssets,
@@ -28,12 +29,11 @@ export {
   isSemver,
   mcpbLayout,
   parseToolsJson,
-  renderDarwinLauncher,
   validateManifest,
-  type DarwinMode,
   type McpbManifest,
   type McpbPlatform,
   type ToolEntry,
 } from "./manifest.ts";
+export { collectNotices, isLicenseFileName, packageOfPath, pdfjsAssetLicenseSections, renderNotices, type NoticeSection } from "./notices.ts";
 export { parseCliArgs, type CliOptions } from "./args.ts";
-export { formatSha256Sums, mcpbFileName, parseLipoArchs, type BuildReport } from "./report.ts";
+export { formatSha256Sums, mcpbFileName, type BuildReport } from "./report.ts";

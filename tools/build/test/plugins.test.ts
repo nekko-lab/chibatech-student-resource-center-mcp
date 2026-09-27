@@ -6,8 +6,43 @@ import {
   COREBUNDLE_FILTER,
   EXTERNALS,
   PLAYWRIGHT_CORE_RULES,
+  SERVER_VERSION_FILTER,
   patchPlaywrightCoreSource,
+  patchServerVersionSource,
 } from "../src/plugins.ts";
+
+describe("patchServerVersionSource（packages/server/src/version.ts の版をビルドの版にする）", () => {
+  // dev の packages/server/src/version.ts と同じ形
+  const source = [
+    "/** サーバの版。package.json の version と揃える（テストで照合している） */",
+    'export const VERSION = "0.1.0";',
+    "",
+    'export const SERVER_NAME = "chibatech-src-mcp";',
+    "export const USER_AGENT = `${SERVER_NAME}/${VERSION} (unofficial)`;",
+  ].join("\n");
+
+  it("VERSION の値だけを差し替える（User-Agent はそこから作られる）", () => {
+    const out = patchServerVersionSource(source, "1.2.3-rc.1");
+    expect(out).toContain('export const VERSION = "1.2.3-rc.1";');
+    expect(out).not.toContain('"0.1.0"');
+    expect(out).toContain("export const USER_AGENT = `${SERVER_NAME}/${VERSION} (unofficial)`;");
+  });
+
+  it("対象が 1 件でなければ止める", () => {
+    expect(() => patchServerVersionSource("export const NAME = 1;", "1.2.3")).toThrow(/0 件/);
+    expect(() => patchServerVersionSource(`${source}\n${source}`, "1.2.3")).toThrow(/2 件/);
+  });
+
+  it("semver でない版は拒む", () => {
+    expect(() => patchServerVersionSource(source, '1.2.3"; evil()')).toThrow(/semver/);
+  });
+
+  it("packages/server/src/version.ts だけに当たる", () => {
+    expect(SERVER_VERSION_FILTER.test("/repo/packages/server/src/version.ts")).toBe(true);
+    expect(SERVER_VERSION_FILTER.test("C:\\repo\\packages\\server\\src\\version.ts")).toBe(true);
+    expect(SERVER_VERSION_FILTER.test("/repo/packages/browser/src/version.ts")).toBe(false);
+  });
+});
 
 const sample = [
   'const packageJson = require(import_path3.default.join(packageRoot, "package.json"));',

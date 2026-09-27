@@ -5,7 +5,6 @@ import {
   buildManifest,
   mcpbLayout,
   parseToolsJson,
-  renderDarwinLauncher,
   validateManifest,
   type ManifestInput,
 } from "../src/manifest.ts";
@@ -19,7 +18,6 @@ const input = (over: Partial<ManifestInput> = {}): ManifestInput => ({
   name: "chibatech-src-mcp",
   version: "1.2.3",
   tools,
-  darwin: "universal",
   ...over,
 });
 
@@ -30,8 +28,8 @@ const ENV = {
   CSRC_DOWNLOAD_DIR: "${user_config.download_dir}",
 };
 
-describe("buildManifest（ユニバーサル）", () => {
-  it("binary 型。macOS はユニバーサルバイナリを直接、Windows は platform_overrides で .exe を起動する", () => {
+describe("buildManifest", () => {
+  it("binary 型。macOS（Apple シリコン）はバイナリを直接、Windows は platform_overrides で .exe を起動する", () => {
     const m = buildManifest(input());
     expect(m.manifest_version).toBe("0.3");
     expect(m.name).toBe("chibatech-src-mcp");
@@ -55,10 +53,15 @@ describe("buildManifest（ユニバーサル）", () => {
     expect(buildManifest(input()).compatibility).toEqual({ platforms: ["darwin", "win32"] });
   });
 
-  it("表示名と説明に「非公式」を含め、作者とリポジトリを載せる", () => {
+  it("説明に「macOS は Apple シリコン（M1 以降）のみ」を書く", () => {
+    expect(buildManifest(input()).description).toContain("macOS は Apple シリコン（M1 以降）のみ");
+  });
+
+  it("表示名と説明に「非公式」を含め、作者・リポジトリ・ライセンス（MIT）を載せる", () => {
     const m = buildManifest(input());
     expect(m.display_name).toContain("非公式");
     expect(m.description).toContain("非公式");
+    expect(m.license).toBe("MIT");
     expect(m.author.name).toBe("nekko-lab");
     expect(m.repository).toEqual({ type: "git", url: "https://github.com/nekko-lab/chibatech-student-resource-center-mcp" });
   });
@@ -93,49 +96,12 @@ describe("buildManifest（ユニバーサル）", () => {
   });
 });
 
-describe("buildManifest（代替: 起動スクリプト）", () => {
-  it("macOS は /bin/sh で launch.sh を起動し、Windows は .exe を直接（args は空に戻す）", () => {
-    const m = buildManifest(input({ darwin: "launcher" }));
-    expect(m.server.entry_point).toBe("server/launch.sh");
-    expect(m.server.mcp_config.command).toBe("/bin/sh");
-    expect(m.server.mcp_config.args).toEqual(["${__dirname}/server/launch.sh"]);
-    expect(m.server.mcp_config.platform_overrides.win32).toEqual({
-      command: "${__dirname}/server/chibatech-src-mcp.exe",
-      args: [],
-      env: ENV,
-    });
-    expect(validateManifest(m)).toEqual([]);
-  });
-
-  it("launch.sh は uname -m で arm64 / x64 を選ぶ", () => {
-    const s = renderDarwinLauncher("chibatech-src-mcp");
-    expect(s.startsWith("#!/bin/sh\n")).toBe(true);
-    expect(s).toContain("uname -m");
-    expect(s).toContain('exec "$dir/chibatech-src-mcp-arm64" "$@"');
-    expect(s).toContain('exec "$dir/chibatech-src-mcp-x64" "$@"');
-  });
-});
-
 describe("mcpbLayout", () => {
-  it("ユニバーサル: server/<名前> と server/<名前>.exe", () => {
-    expect(mcpbLayout("n", "universal")).toEqual({
-      entries: [
-        { path: "server/n", from: "darwin-universal", executable: true },
-        { path: "server/n.exe", from: "windows-x64", executable: false },
-      ],
-      launcher: undefined,
-    });
-  });
-
-  it("起動スクリプト: launch.sh と arm64 / x64 の 2 つ、server/<名前>.exe", () => {
-    expect(mcpbLayout("n", "launcher")).toEqual({
-      entries: [
-        { path: "server/n-arm64", from: "darwin-arm64", executable: true },
-        { path: "server/n-x64", from: "darwin-x64", executable: true },
-        { path: "server/n.exe", from: "windows-x64", executable: false },
-      ],
-      launcher: "server/launch.sh",
-    });
+  it("server/<名前>（darwin-arm64）と server/<名前>.exe（windows-x64）", () => {
+    expect(mcpbLayout("n")).toEqual([
+      { path: "server/n", from: "darwin-arm64", executable: true },
+      { path: "server/n.exe", from: "windows-x64", executable: false },
+    ]);
   });
 });
 
@@ -149,6 +115,11 @@ describe("validateManifest", () => {
   it("semver 以外の version を拒む（pre-release は可）", () => {
     expect(validateManifest({ ...ok(), version: "1.2" })).not.toEqual([]);
     expect(validateManifest({ ...ok(), version: "0.0.0-dev.12" })).toEqual([]);
+  });
+
+  it("MIT 以外のライセンスと、対応する Mac を書かない説明を拒む", () => {
+    expect(validateManifest({ ...ok(), license: "Apache-2.0" }).join()).toMatch(/license/);
+    expect(validateManifest({ ...ok(), description: "非公式ツールです。" }).join()).toMatch(/Apple シリコン/);
   });
 
   it("「非公式」を含まない表示名を拒む", () => {
